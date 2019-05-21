@@ -27,7 +27,7 @@ class Timer:
         self.interval = (self.end - self.start)
 
 
-class SynBioBrainCUDA(object):
+class SynBioBrainFD(object):
 
     def __init__(self, grid_corners, nx, ny, dtype='float64'):
         """
@@ -65,7 +65,7 @@ class SynBioBrainCUDA(object):
         self.iters = 0
 
         # calculate inverse_jacobian_transpose and integration elements in parrellel
-        
+
 
 
         # use relevant precision

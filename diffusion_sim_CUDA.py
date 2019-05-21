@@ -18,6 +18,7 @@ from matplotlib.backends.backend_pdf import PdfPages
 import matplotlib.colors as colors
 from scipy.integrate import odeint
 from matplotlib.animation import FFMpegWriter
+import sys
 
 class Timer:
     def __enter__(self):
@@ -29,10 +30,9 @@ class Timer:
         self.interval = (self.end - self.start)
 
 
+class SynBioBrainCUDA(object):
 
-class SynBioBrainFD(object):
-
-    def __init__(self, grid_corners, nx, ny, dtype='float64'):
+    def __init__(self, grid_corners, nx, ny, checkerboard = False, dtype='float64'):
         """
         Initialize a grid.
 
@@ -69,7 +69,6 @@ class SynBioBrainFD(object):
 
         # calculate inverse_jacobian_transpose and integration elements in parrellel
 
-
         # use relevant precision
         if self.dtype == 'float64':
             dtype = 'double'
@@ -86,13 +85,14 @@ class SynBioBrainFD(object):
         self.vertex_positions = np.array([self.get_vertex_position(i) for i in range(self.n_vertices)])
 
 
+        self.checkerboard = checkerboard
+
     def get_vertex_position(self,node_number):
         node_coordinates = (node_number//self.nx, node_number % self.nx)
 
         node_position = (self.grid_corners[1, 0] + node_coordinates[0] * self.dy, self.grid_corners[0, 0] + node_coordinates[1] * self.dx)
 
         return node_position
-
 
     def get_node_positions(self, node_dim, grid_corners):
         '''
@@ -170,35 +170,34 @@ class SynBioBrainFD(object):
         # build kernel
         self.get_Au_kernel = SourceModule("""
            __global__ void get_y(
-            const {0} *xb,  {0} *yb, const int * non_boundary_nodesb,  const int * barrier_nodesb, const int nx, const {0} dx, const {0} D)
+            const int N, const {0} *xb,  {0} *yb, const int * non_boundary_nodesb, const int * barrier_nodesb, const int nx, const {0} dx, const {0} D)
             {{
                 // THIS ONLY RUNS FOR NODES THAT ARENT BOUNDARY NODES
-                int i = threadIdx.x; // non boundary node number
+                int i = blockIdx.x*blockDim.x + threadIdx.x; // non boundary node number
+                if (i <= N) {{ // check we havent run over
 
-                // map boundary node number to global node numbering
-                int n = non_boundary_nodesb[i];
+                    // map boundary node number to global node numbering
+                    int n = non_boundary_nodesb[i];
 
-                {0} d;
 
-                if (barrier_nodesb[n]) {{ // all nodes are output_nodes
-                    d = D;
-                }} else {{
-                    d = D;
+                    {0} d;
+
+                    if (barrier_nodesb[n]) {{ // all nodes are output_nodes
+                        d = D;
+                    }} else {{
+                        d = D;
+                    }}
+
+                    yb[n] = d*(xb[n-1] - 4 * xb[n] + xb[n+1] + xb[n+nx] + xb[n-nx]) / (dx*dx);
                 }}
-
-                yb[n] = d*(xb[n-1] - 4 * xb[n] + xb[n+1] + xb[n+nx] + xb[n-nx]) / (dx*dx);
 
             }}
 
              """.format(dtype))
 
-
-
-
         self.add_next_u_kernel = SourceModule("""__global__ void add_next_u(
-        {0} *Aub, const int *boundary_flagsb, const {0} dt, const int number_of_nodes, const int t,  {0} *all_ub, {0} *current_ub, int * activated_nodesb, {0} * times_onb, {0} * times_offb, {0} production_rate)
+        const int number_of_nodes, {0} *Aub, const int *boundary_flagsb, const {0} dt,  const int t,  {0} *all_ub, {0} *current_ub, int * activated_nodesb, {0} * times_onb, {0} * times_offb, const int * maskb, {0} production_rate)
         {{
-
 
             /*
             calculates du and adds the next u to time_series
@@ -208,135 +207,146 @@ class SynBioBrainFD(object):
 
             // calculate un_1 and add to buffer of all us
 
-            int i = threadIdx.x;
+            int i = blockIdx.x*blockDim.x + threadIdx.x;
 
-            // calculate the expression level from ramping up and down
-            {0} exp_level;
+            if(i <= number_of_nodes) {{
 
-            if (activated_nodesb[i]  == 1) {{ // if cell is on
+                // calculate the expression level from ramping up and down
+                {0} exp_level;
+
+                if (activated_nodesb[i]  == 1) {{ // if cell is on
 
 
-                {0} time_passed = t - times_onb[i];
-                exp_level = time_passed * 0.001;
+                    {0} time_passed = t - times_onb[i];
+                    exp_level = time_passed * 0.001;
 
-                if(exp_level > 1.0) {{
-                    exp_level = 1.0;
+                    if(exp_level > 1.0) {{
+                        exp_level = 1.0;
+                    }}
+
+
+
+                }} else if(activated_nodesb[i]== 0) {{ // if off might be ramping down
+
+                    {0} time_passed = t - times_offb[i];
+                    exp_level = 1.0 - time_passed * 0.1;
+
+                    if (exp_level < 0.0) {{
+                        exp_level = 0.0;
+                    }}
                 }}
 
+                exp_level = 1.0;
 
-            }} else if(activated_nodesb[i]== 0) {{ // if off might be ramping down
 
-                {0} time_passed = t - times_offb[i];
-                exp_level = 1.0 - time_passed * 0.1;
+                {0} production =  activated_nodesb[i]  * (1-maskb[i]) * exp_level * production_rate;
+                {0} diffusion = Aub[i];
+                {0} degradation = -0.0000001;
 
-                if (exp_level < 0.0) {{
-                    exp_level = 0.0;
+                /*
+                if (current_ub[i] > 0.001) {{
+                    //degradation = -0.01/60.0;
+                    //degradation = -0.000001*current_ub[i];
+                    //degradation = -0.02;
+                    //degradation = -0.000005;
+
+                    degradation = -0.000005;
+                }} else {{
+                    degradation = 0;
                 }}
+                */
+
+
+
+
+                {0} u = current_ub[i];
+
+                {0} du = dt * (production + diffusion);
+
+                if(-du > u){{
+                    du = -u;
+                }}
+
+                current_ub[i] += du;
+
+                all_ub[number_of_nodes*(t) + i] = current_ub[i];
+                Aub[i] = 0;
             }}
-
-            exp_level = 1.0;
-
-
-            {0} production =  activated_nodesb[i] * exp_level * production_rate;
-            {0} diffusion = Aub[i];
-            {0} degradation;
-
-            /*
-            if (current_ub[i] > 0.001) {{
-                //degradation = -0.01/60.0;
-                //degradation = -0.000001*current_ub[i];
-                //degradation = -0.02;
-                //degradation = -0.000005;
-
-                degradation = -0.000005;
-            }} else {{
-                degradation = 0;
-            }}
-            */
-
-
-            {0} u = current_ub[i];
-            {0} du = dt * (production + diffusion);
-
-            if(-du > u){{
-                du = -u;
-            }}
-
-
-            current_ub[i] += du;
-
-            all_ub[number_of_nodes*(t) + i] = current_ub[i];
-            Aub[i] = 0;
 
         }}
             """.format(dtype))
 
         # adds boundary conditions on the value of u, value of du BCs set in add_next_u
         self.boundary_kernel_zero = SourceModule("""__global__ void boundary(
-        {0} *Aub, const int *boundary_nodes, const {0} *xb, const int N, const int nx, const {0} dx, const {0} D)
+        const int n_boundary_nodes, {0} *Aub, const int *boundary_nodes, const {0} *xb, const int N, const int nx, const {0} dx, const {0} D)
         {{
 
-            int n = threadIdx.x;
-            int b = boundary_nodes[n];
 
-            Aub[b] = 0;
+            int n = blockIdx.x*blockDim.x + threadIdx.x;
+            if(n < n_boundary_nodes) {{
+                int b = boundary_nodes[n];
+
+                Aub[b] = 0;
+            }}
 
         }}
             """.format(dtype))
 
         self.boundary_kernel_insulating = SourceModule("""__global__ void boundary(
-        {0} *Aub,const int *boundary_nodes,  const {0} *xb, const int N, const int nx, const {0} dx, const {0} D)
+        const int n_boundary_nodes, {0} *Aub,const int *boundary_nodes,  const {0} *xb, const int N, const int nx, const {0} dx, const {0} D)
         {{
 
-            int n = threadIdx.x;
-            int b = boundary_nodes[n];
+            int n = blockIdx.x*blockDim.x + threadIdx.x;
+            if(n < n_boundary_nodes) {{
+                int b = boundary_nodes[n];
 
-            if(b == 0){{
-                // top left
-                Aub[b] = Aub[nx + 1];
+                if(b == 0){{
+                    // top left
+                    Aub[b] = Aub[nx + 1];
 
-            }} else if (b == nx - 1) {{
+                }} else if (b == nx - 1) {{
 
-                // top right
-                Aub[b] = Aub[2*nx-2];
-
-
-            }} else if (b == N - nx) {{
-
-                // bottom left
-                Aub[b] = Aub[N - nx*2 - 1];
+                    // top right
+                    Aub[b] = Aub[2*nx-2];
 
 
-            }} else if (b == N - 1) {{
-                // bottom right
+                }} else if (b == N - nx) {{
 
-                Aub[b] = Aub[N-nx-2];
-
-            }} else if (b <= nx - 1) {{
-                // top
-
-                Aub[b] = Aub[b+nx];
-
-            }} else if (b >= N - nx) {{
-                // bottom
-
-                Aub[b] = Aub[b-nx];
+                    // bottom left
+                    Aub[b] = Aub[N - nx*2 - 1];
 
 
-            }} else if (b%nx == 0){{ // if same sign a left node
-                // left
+                }} else if (b == N - 1) {{
+                    // bottom right
 
-                Aub[b] = Aub[b + 1];
-                //Aub[b] = 0;
+                    Aub[b] = Aub[N-nx-2];
+
+                }} else if (b <= nx - 1) {{
+                    // top
+
+                    Aub[b] = Aub[b+nx];
+
+                }} else if (b >= N - nx) {{
+                    // bottom
+
+                    Aub[b] = Aub[b-nx];
 
 
-            }} else if (b%nx == nx-1) {{ // if opposite sign a right node
-                // right
-                Aub[b] = Aub[b - 1];
+                }} else if (b%nx == 0){{ // if same sign a left node
+                    // left
 
-            }} else {{
-                // throw error as all boundary nodes sould be done
-                printf("boundary node not done: %d ", b);
+                    Aub[b] = Aub[b + 1];
+                    //Aub[b] = 0;
+
+
+                }} else if (b%nx == nx-1) {{ // if opposite sign a right node
+                    // right
+                    Aub[b] = Aub[b - 1];
+
+                }} else {{
+                    // throw error as all boundary nodes sould be done
+                    printf("boundary node not done: %d ", b);
+                }}
             }}
 
 
@@ -344,102 +354,109 @@ class SynBioBrainFD(object):
             """.format(dtype))
 
         self.boundary_kernel_periodic = SourceModule("""__global__ void boundary(
-        {0} *Aub,const int *boundary_nodes,  const {0} *xb, const int N, const int nx, const {0} dx, const {0} D)
+        const int n_boundary_nodes, {0} *Aub,const int *boundary_nodes,  const {0} *xb, const int N, const int nx, const {0} dx, const {0} D)
         {{
 
-            int n = threadIdx.x;
-            int b = boundary_nodes[n];
+            int n = blockIdx.x*blockDim.x + threadIdx.x;
 
-            // all boundary nodes will have the smaller diffusion coefficient
+            if(n < n_boundary_nodes) {{
+                int b = boundary_nodes[n];
 
-            {0} d = D;
+                // all boundary nodes will have the smaller diffusion coefficient
 
-            if(b == 0){{
-                // top left
-                Aub[b] = d*(-4 * xb[b] + xb[b+1] + xb[b+nx] + xb[N-(nx-b)+1] + xb[b+nx-1]) / (dx*dx);
+                {0} d = D;
 
-            }} else if (b == nx - 1) {{
+                if(b == 0){{
+                    // top left
+                    Aub[b] = d*(-4 * xb[b] + xb[b+1] + xb[b+nx] + xb[N-(nx-b)+1] + xb[b+nx-1]) / (dx*dx);
 
-                // top right
-                Aub[b] = d*(-4 * xb[b] + xb[b-1] + xb[b+nx] + xb[N-(nx-b)+1] + xb[b-nx+1]) / (dx*dx);
+                }} else if (b == nx - 1) {{
 
-            }} else if (b == N - nx) {{
-                // bottom left
+                    // top right
+                    Aub[b] = d*(-4 * xb[b] + xb[b-1] + xb[b+nx] + xb[N-(nx-b)+1] + xb[b-nx+1]) / (dx*dx);
 
-                Aub[b] = d*(-4 * xb[b] + xb[b+1] + xb[b-nx] + xb[nx-(N-b)-1] + xb[b+nx-1]) / (dx*dx);
+                }} else if (b == N - nx) {{
+                    // bottom left
 
-            }} else if (b == N - 1) {{
-                // bottom right
-                Aub[b] = d*(-4 * xb[b] + xb[b-1] + xb[b-nx] + xb[nx-(N-b)-1] + xb[b-nx+1]) / (dx*dx);
+                    Aub[b] = d*(-4 * xb[b] + xb[b+1] + xb[b-nx] + xb[nx-(N-b)-1] + xb[b+nx-1]) / (dx*dx);
 
-            }} else if (b <= nx - 1) {{
-                // top
-                Aub[b] = d*(-4 * xb[b] + xb[b-1] + xb[b+1] + xb[b+nx] + xb[N-(nx-b)+1]) / (dx*dx);
+                }} else if (b == N - 1) {{
+                    // bottom right
+                    Aub[b] = d*(-4 * xb[b] + xb[b-1] + xb[b-nx] + xb[nx-(N-b)-1] + xb[b-nx+1]) / (dx*dx);
 
-            }} else if (b >= N - nx) {{
-                // bottom
+                }} else if (b <= nx - 1) {{
+                    // top
+                    Aub[b] = d*(-4 * xb[b] + xb[b-1] + xb[b+1] + xb[b+nx] + xb[N-(nx-b)+1]) / (dx*dx);
 
-                Aub[b] = d*(-4 * xb[b] + xb[b-1] + xb[b+1] + xb[b-nx] + xb[nx - (N-b) -1]) / (dx*dx);
+                }} else if (b >= N - nx) {{
+                    // bottom
 
-            }} else if (b%nx == 0){{ // if same sign a left node
-                // left
-                Aub[b] = d*(-4 * xb[b] + xb[b-nx] + xb[b+nx] + xb[b+1] + xb[b + nx - 1]) / (dx*dx);
+                    Aub[b] = d*(-4 * xb[b] + xb[b-1] + xb[b+1] + xb[b-nx] + xb[nx - (N-b) -1]) / (dx*dx);
 
-            }} else if (b%nx == nx-1) {{ // if opposite sign a right node
-                // right
+                }} else if (b%nx == 0){{ // if same sign a left node
+                    // left
+                    Aub[b] = d*(-4 * xb[b] + xb[b-nx] + xb[b+nx] + xb[b+1] + xb[b + nx - 1]) / (dx*dx);
 
-                Aub[b] = d*(-4 * xb[b] + xb[b-nx] + xb[b+nx] + xb[b-1] + xb[b - (nx-1)]) / (dx*dx);
+                }} else if (b%nx == nx-1) {{ // if opposite sign a right node
+                    // right
 
-            }} else {{
-                // throw error as all boundary nodes sould be done
-                printf("boundary node not done: %d ", b);
+                    Aub[b] = d*(-4 * xb[b] + xb[b-nx] + xb[b+nx] + xb[b-1] + xb[b - (nx-1)]) / (dx*dx);
+
+                }} else {{
+                    // throw error as all boundary nodes sould be done
+                    printf("boundary node not done: %d ", b);
+                }}
             }}
 
         }}
             """.format(dtype))
 
         self.add_activated_kernel = SourceModule("""__global__ void add_activated(
-        {0} *current_ub, int *activatedb, int * all_activatedb, int * input_verticesb, int * output_verticesb, const int number_of_nodes, const int t, {0} * psb){{
+        const int number_of_nodes, {0} *current_ub, int *activatedb, int * all_activatedb, int * input_verticesb, int * output_verticesb, const int * maskb,  const int t, {0} * psb){{
 
             /*
             tests the output vertices and returns a one hot vecotr fo the ones that are activated
             */
-            int n = threadIdx.x;
+            int n = blockIdx.x*blockDim.x + threadIdx.x;
 
-            {0} u = current_ub[n];
-            // gett activated output nodes, change between mushroom and bacnd pass using different ps
+            if (n<number_of_nodes){{
 
-            if (output_verticesb[n] == 1 && input_verticesb[n] != 1) {{ // if this is an output vertex
+                {0} u = current_ub[n];
+                // gett activated output nodes, change between mushroom and bacnd pass using different ps
 
-                if (activatedb[n] == 0 && psb[0] < u && u < psb[1]) {{ // if vertex not activated
-                    activatedb[n] = 1;
 
-                }} else if(activatedb[n] == 1 && (u < psb[2] || u > psb[3])) {{ // if vertex is activated
-                    activatedb[n] = 0;
+                if (output_verticesb[n] == 1 && input_verticesb[n] != 1 && maskb[n] == 1) {{ // if this is an output vertex
 
+                    if (activatedb[n] == 0 && psb[0] < u && u < psb[1]) {{ // if vertex not activated
+                        activatedb[n] = 1;
+
+                    }} else if(activatedb[n] == 1 && (u < psb[2] || u > psb[3])) {{ // if vertex is activated
+                        activatedb[n] = 0;
+
+                    }}
                 }}
-            }}
 
-            if(t > 3000000){{
+                if(t > 300){{
 
-                if(input_verticesb[n] == 1){{
+                    if(input_verticesb[n] == 1){{
 
-                    activatedb[n] = 0;
-                    input_verticesb[n] = 0;
+                        activatedb[n] = 0;
+                        input_verticesb[n] = 0;
+                    }}
                 }}
-            }}
 
-            /*
-            if(n==0){{
-                float sum = 0;
-                for (int i = 0; i< 10178; i++){{
-                    sum += activatedb[i];
+                /*
+                if(n==0){{
+                    float sum = 0;
+                    for (int i = 0; i< 10178; i++){{
+                        sum += activatedb[i];
+                    }}
+                    printf("%d ", sum);
                 }}
-                printf("%d ", sum);
-            }}
-            */
+                */
 
-            all_activatedb[number_of_nodes*(t) + n] = activatedb[n];
+                all_activatedb[number_of_nodes*(t) + n] = activatedb[n];
+            }}
         }}
             """.format(dtype))
 
@@ -518,7 +535,20 @@ class SynBioBrainFD(object):
 
         all_u[0,:] = current_u
 
-        return [all_u, current_u, Au, ps, node_times_on, node_times_off, all_activated, activated, boundary_nodes, non_boundary_nodes, boundary_flags, one_hot_in, one_hot_out, one_hot_barrier]
+        if self.checkerboard:
+            even_positions = [all_node_positions[i] for i in output_indeces if i%2 == 0]
+            odd_positions = [all_node_positions[i] for i in output_indeces if i%2 == 1]
+
+            _, mask1 = self.assign_vertices(self.vertex_positions, even_positions, node_radius)
+            _, mask2 = self.assign_vertices(self.vertex_positions, odd_positions, node_radius)
+
+        else:
+            mask = np.copy(one_hot_out)
+
+        if self.checkerboard:
+            return [all_u, current_u, mask1, mask2, Au, ps, node_times_on, node_times_off, all_activated, activated, boundary_nodes, non_boundary_nodes, boundary_flags, one_hot_in, one_hot_out, one_hot_barrier]
+        else:
+            return [all_u, current_u, mask, Au, ps, node_times_on, node_times_off, all_activated, activated, boundary_nodes, non_boundary_nodes, boundary_flags, one_hot_in, one_hot_out, one_hot_barrier]
 
     def create_programs(self, boundary_cond):
         Au_prg = self.get_Au_kernel.get_function("get_y")
@@ -541,13 +571,14 @@ class SynBioBrainFD(object):
 
     def create_buffers(self, arrays):
         # Au buffers
-        # create buffer
+        if self.checkerboard:
+            all_u, current_u, mask1, mask2, Au, ps, node_times_on, node_times_off, all_activated, activated, boundary_nodes, non_boundary_nodes, boundary_flags, one_hot_in, one_hot_out, one_hot_barrier = arrays
 
-        all_u, current_u, Au, ps, node_times_on, node_times_off, all_activated, activated, boundary_nodes, non_boundary_nodes, boundary_flags, one_hot_in, one_hot_out, one_hot_barrier = arrays
+        else:
+            all_u, current_u, mask, Au, ps, node_times_on, node_times_off, all_activated, activated, boundary_nodes, non_boundary_nodes, boundary_flags, one_hot_in, one_hot_out, one_hot_barrier = arrays
 
         non_boundary_nodesb = cuda.mem_alloc(non_boundary_nodes.nbytes)
         cuda.memcpy_htod(non_boundary_nodesb, non_boundary_nodes)
-
 
         boundary_flagsb = cuda.mem_alloc(boundary_flags.nbytes)
         cuda.memcpy_htod(boundary_flagsb, boundary_flags)
@@ -557,6 +588,7 @@ class SynBioBrainFD(object):
 
         one_hot_barrierb = cuda.mem_alloc(one_hot_barrier.nbytes)
         cuda.memcpy_htod(one_hot_barrierb, one_hot_barrier)
+
         boundary_nodesb = cuda.mem_alloc(boundary_nodes.nbytes)
         cuda.memcpy_htod(boundary_nodesb, boundary_nodes)
 
@@ -565,10 +597,31 @@ class SynBioBrainFD(object):
 
         Aub = cuda.mem_alloc(Au.nbytes)
 
-        all_ub = cuda.mem_alloc(all_u.nbytes)
-        cuda.memcpy_htod(all_ub, all_u)
-        current_ub = cuda.mem_alloc(current_u.nbytes)
-        cuda.memcpy_htod(current_ub, current_u)
+        if self.checkerboard:
+            all_u1b = cuda.mem_alloc(all_u.nbytes)
+            cuda.memcpy_htod(all_u1b, all_u)
+            all_u2b = cuda.mem_alloc(all_u.nbytes)
+            cuda.memcpy_htod(all_u2b, all_u)
+
+            current_u1b = cuda.mem_alloc(current_u.nbytes)
+            cuda.memcpy_htod(current_u1b, current_u)
+            current_u2b = cuda.mem_alloc(current_u.nbytes)
+            cuda.memcpy_htod(current_u2b, current_u)
+
+            mask1b = cuda.mem_alloc(mask1.nbytes)
+            cuda.memcpy_htod(mask1b, mask1)
+            mask2b = cuda.mem_alloc(mask2.nbytes)
+            cuda.memcpy_htod(mask2b, mask2)
+
+        else:
+            all_ub = cuda.mem_alloc(all_u.nbytes)
+            cuda.memcpy_htod(all_ub, all_u)
+            current_ub = cuda.mem_alloc(current_u.nbytes)
+            cuda.memcpy_htod(current_ub, current_u)
+
+            maskb = cuda.mem_alloc(mask.nbytes)
+            cuda.memcpy_htod(maskb, mask)
+
         activatedb = cuda.mem_alloc(activated.nbytes)
         cuda.memcpy_htod(activatedb, activated)
         one_hot_outb = cuda.mem_alloc(one_hot_out.nbytes)
@@ -582,17 +635,45 @@ class SynBioBrainFD(object):
         node_times_offb = cuda.mem_alloc(node_times_off.nbytes)
         cuda.memcpy_htod(node_times_offb, node_times_off)
 
-        return [all_ub, current_ub, Aub, psb, node_times_onb, node_times_offb, all_activatedb, activatedb, boundary_nodesb, non_boundary_nodesb, boundary_flagsb, one_hot_inb, one_hot_outb, one_hot_barrierb]
+        if self.checkerboard:
+
+            return [all_u1b, all_u2b, current_u1b, current_u2b, mask1b, mask2b, Aub, psb, node_times_onb, node_times_offb, all_activatedb, activatedb, boundary_nodesb, non_boundary_nodesb, boundary_flagsb, one_hot_inb, one_hot_outb, one_hot_barrierb]
+        else:
+            return [all_ub, current_ub, maskb, Aub, psb, node_times_onb, node_times_offb, all_activatedb, activatedb, boundary_nodesb, non_boundary_nodesb, boundary_flagsb, one_hot_inb, one_hot_outb, one_hot_barrierb]
+
+    def timestep(self, programs, buffers, params, t):
+        Au_prg, boundary_prg, add_next_u_prg, add_activated_prg = programs
+        all_ub, current_ub, maskb, Aub, psb, node_times_onb, node_times_offb, all_activatedb, activatedb, boundary_nodesb, non_boundary_nodesb, boundary_flagsb, one_hot_inb, one_hot_outb, one_hot_barrierb = buffers
+        dt, n_timesteps, n_loops, ps, D, production_rate, boundary_cond, node_radius = params
+        # get Au buffer for the time step
+        Au_prg(np.int32(self.n_vertices - self.n_boundary_vertices), current_ub, Aub, non_boundary_nodesb,one_hot_barrierb, np.int32(self.nx), self.dx,  D, block = self.blockDim, grid=(int((self.n_vertices - self.n_boundary_vertices)//self.blockDim[0] + 1),int(1),int(1)))
+
+        boundary_prg(np.int32(self.n_boundary_vertices), Aub, boundary_nodesb, current_ub, np.int32(self.n_vertices), np.int32(self.nx), self.dx, D,block = self.blockDim, grid=(int(self.n_boundary_vertices// self.blockDim[0] + 1),1,1))
+
+        add_next_u_prg( np.int32(self.n_vertices), Aub, boundary_flagsb, dt, np.int32(t), all_ub, current_ub, activatedb, node_times_onb, node_times_offb, maskb,  production_rate, block = self.blockDim, grid=(self.n_vertices//self.blockDim[0] + 1,1,1))
+        #add_next_u_prg.add_next_u(queue, (self.n_nodes,), None, Aub, boundary_flagsb, dt, np.int32(self.n_nodes), np.int32(t), activatedb, production_rate)#run kernel
+        add_activated_prg( np.int32(self.n_vertices),current_ub, activatedb, all_activatedb, one_hot_inb, one_hot_outb, maskb, np.int32(t), psb, block = self.blockDim, grid=(int(self.n_vertices// self.blockDim[0] +1),1,1))
+        #cl.enqueue_copy(queue, current_u, current_ub)
+        #cl.enqueue_copy(queue, all_u, all_ub) # copy result from buffer
+        #print('sum: ', sum(current_u))
 
     def run_sim(self, arrays, buffers, programs, n_loops, n_timesteps, params):
 
-        Au_prg, boundary_prg, add_next_u_prg, add_activated_prg = programs
-        all_u, current_u, Au, ps, node_times_on, node_times_off, all_activated, activated, boundary_nodes, non_boundary_nodes, boundary_flags, one_hot_in, one_hot_out, one_hot_barrier = arrays
-        all_ub, current_ub, Aub, psb, node_times_onb, node_times_offb, all_activatedb, activatedb, boundary_nodesb, non_boundary_nodesb, boundary_flagsb, one_hot_inb, one_hot_outb, one_hot_barrierb = buffers
-        dt, n_timesteps, n_loops, ps, D, production_rate, boundary_cond, node_radius = params
+        if self.checkerboard:
+            all_u, mask1, mask2, current_u, Au, ps, node_times_on, node_times_off, all_activated, activated, boundary_nodes, non_boundary_nodes, boundary_flags, one_hot_in, one_hot_out, one_hot_barrier = arrays
+            all_u1b, all_u2b, current_u1b, current_u2b, mask1b, mask2b, Aub, psb, node_times_onb, node_times_offb, all_activatedb, activatedb, boundary_nodesb, non_boundary_nodesb, boundary_flagsb, one_hot_inb, one_hot_outb, one_hot_barrierb = buffers
+            buffers = all_u1b, all_u2b, current_u1b, current_u2b, Aub, psb, node_times_onb, node_times_offb, all_activatedb, activatedb, boundary_nodesb, non_boundary_nodesb, boundary_flagsb, one_hot_inb, one_hot_outb, one_hot_barrierb
+        else:
+            all_u, current_u, mask, Au, ps, node_times_on, node_times_off, all_activated, activated, boundary_nodes, non_boundary_nodes, boundary_flags, one_hot_in, one_hot_out, one_hot_barrier = arrays
+            all_ub, current_ub, maskb, Aub, psb, node_times_onb, node_times_offb, all_activatedb, activatedb, boundary_nodesb, non_boundary_nodesb, boundary_flagsb, one_hot_inb, one_hot_outb, one_hot_barrierb = buffers
+            buffers = all_ub, current_ub, maskb, Aub, psb, node_times_onb, node_times_offb, all_activatedb, activatedb, boundary_nodesb, non_boundary_nodesb, boundary_flagsb, one_hot_inb, one_hot_outb, one_hot_barrierb
 
         overall_activated = []
         overall_Us = []
+        overall_Us2 = []
+
+        self.blockDim = (128,1,1)
+
         for i in range(n_loops): # each loop allows copying from GPU to RAM
             print('loop:', i)
             for t in range(n_timesteps): # each loop runs in GPU memory
@@ -600,36 +681,50 @@ class SynBioBrainFD(object):
                     print(t)
                     print('--------------------------------------------------------------------')
 
-                # get Au buffer for the time step
-                Au_prg(current_ub, Aub, non_boundary_nodesb,one_hot_barrierb, np.int32(self.nx), self.dx,  D, block=(int(self.n_vertices - self.n_boundary_vertices),int(1),int(1)))
 
-                boundary_prg(Aub, boundary_nodesb, current_ub, np.int32(self.n_vertices), np.int32(self.nx), self.dx, D, block=(self.n_boundary_vertices,1,1))
-                # calculate next u and add to the buffer of all us
+                if self.checkerboard:
+                    buffers = [all_u1b, current_u1b, mask1b, Aub, psb, node_times_onb, node_times_offb, all_activatedb, activatedb, boundary_nodesb, non_boundary_nodesb, boundary_flagsb, one_hot_inb, one_hot_outb, one_hot_barrierb]
+                    self.timestep(programs, buffers, params, t)
 
-                add_next_u_prg( Aub, boundary_flagsb, dt, np.int32(self.n_vertices), np.int32(t), all_ub, current_ub, activatedb, node_times_onb, node_times_offb,  production_rate, block=(self.n_vertices,1,1))
-                #add_next_u_prg.add_next_u(queue, (self.n_nodes,), None, Aub, boundary_flagsb, dt, np.int32(self.n_nodes), np.int32(t), activatedb, production_rate)#run kernel
-                add_activated_prg(current_ub, activatedb, all_activatedb, one_hot_inb, one_hot_outb, np.int32(self.n_vertices), np.int32(t), psb, block=(self.n_vertices,1,1))
-                #cl.enqueue_copy(queue, current_u, current_ub)
-                #cl.enqueue_copy(queue, all_u, all_ub) # copy result from buffer
-                #print('sum: ', sum(current_u))
+                    buffers = [all_u2b, current_u2b, mask2b, Aub, psb, node_times_onb, node_times_offb, all_activatedb, activatedb, boundary_nodesb, non_boundary_nodesb, boundary_flagsb, one_hot_inb, one_hot_outb, one_hot_barrierb]
+                    self.timestep(programs, buffers, params, t)
 
+                else:
+                    self.timestep(programs, buffers, params, t)
 
-            cuda.memcpy_dtoh(all_u, all_ub)
+            if self.checkerboard:
 
-            all_u = all_u.reshape(n_timesteps,self.n_vertices)
-            print('\n u', sum(all_u[0]))
-            print(sum(all_u[-1]))
+                all_u2 = np.copy(all_u)
+                cuda.memcpy_dtoh(all_u, all_u1b)
+                cuda.memcpy_dtoh(all_u2, all_u2b)
+                all_u = all_u.reshape(n_timesteps,self.n_vertices)
+                all_u2 = all_u2.reshape(n_timesteps,self.n_vertices)
+                overall_Us.append(all_u[:n_timesteps])
+                overall_Us2.append(all_u2[:n_timesteps])
+                print('\n u', sum(all_u[0]))
+                print(sum(all_u[-1]))
+                all_u = np.zeros(( n_timesteps , self.n_vertices), dtype = np.float32)
+                all_u2 = np.zeros(( n_timesteps , self.n_vertices), dtype = np.float32)
+
+            else:
+
+                cuda.memcpy_dtoh(all_u, all_ub)
+                all_u = all_u.reshape(n_timesteps,self.n_vertices)
+                overall_Us.append(all_u[:n_timesteps])
+                print('\n u', sum(all_u[0]))
+                print(sum(all_u[-1]))
+                all_u = np.zeros(( n_timesteps , self.n_vertices), dtype = np.float32)
+
             cuda.memcpy_dtoh(all_activated, all_activatedb)
             all_activated = all_activated.reshape(n_timesteps,self.n_vertices)
-            print('a' ,sum(all_activated[0]))
+            print('activated' ,sum(all_activated[0]))
             print(sum(all_activated[-1]))
 
             #input_nodes = np.zeros(self.n_nodes)
 
             #input_nodes = np.array(input_nodes, dtype = np.int32)
-            overall_Us.append(all_u[:n_timesteps])
+
             overall_activated.append(all_activated[:n_timesteps])
-            all_u = np.zeros(( n_timesteps , self.n_vertices), dtype = np.float32)
 
             #all_ub = cl.Buffer(ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=all_u)
             all_activated = np.zeros(( n_timesteps, self.n_vertices), dtype = np.int32)
@@ -637,9 +732,15 @@ class SynBioBrainFD(object):
         #all_activatedb = cl.Buffer(ctx, mf.READ_WRITE | mf.COPY_HOST_PTR, hostbuf=all_activated)
         #input_nodesb = cl.Buffer(ctx, mf.READ_ONLY | mf.COPY_HOST_PTR, hostbuf=input_nodes)
         overall_activated = np.array(overall_activated).reshape(n_loops*(n_timesteps),self.nx*self.nx)
-        overall_Us = np.array(overall_Us).reshape(n_loops*(n_timesteps),self.nx*self.nx)
 
-        return overall_Us, overall_activated
+        if self.checkerboard:
+            overall_Us = np.array(overall_Us).reshape(n_loops*(n_timesteps),self.nx*self.nx)
+            overall_Us2 = np.array(overall_Us2).reshape(n_loops*(n_timesteps),self.nx*self.nx)
+            return overall_Us, overall_Us2, overall_activated
+        else:
+            overall_Us = np.array(overall_Us).reshape(n_loops*(n_timesteps),self.nx*self.nx)
+
+            return overall_Us, overall_activated
 
     def synbio_brain(self, u0, grid_corners, node_dim, input_indeces, output_indeces, params):
 
@@ -653,9 +754,14 @@ class SynBioBrainFD(object):
         boundary_cond = params[6]
         programs = self.create_programs(boundary_cond)
 
-        overall_Us, overall_activated = self.run_sim(arrays, buffers, programs, n_loops, n_timesteps, params)
+        if self.checkerboard:
+            overall_Us1, overall_Us2, overall_activated = self.run_sim(arrays, buffers, programs, n_loops, n_timesteps, params)
+            return overall_Us1, overall_Us2, overall_activated
 
-        return overall_Us, overall_activated
+        else:
+            overall_Us, overall_activated = self.run_sim(arrays, buffers, programs, n_loops, n_timesteps, params)
+            return overall_Us, overall_activated
+
 
 
 
@@ -694,9 +800,7 @@ def get_vertex_production_rates(colony_production_rate, input_vertices, input_co
 
     node_production_rates = colony_production_rate/np.array(input_counts) # get the per vertex production rate for each node
 
-
     one_hot_production = np.zeros(n_vertices)
-
 
     for n, node in enumerate(input_vertices):
         for vertex in node:

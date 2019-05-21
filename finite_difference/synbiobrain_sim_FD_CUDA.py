@@ -19,13 +19,13 @@ node_dim = np.array([1, 10])
 
 D = 3e-6 #cm^2/s
 
-grid = SynBioBrainFD(grid_corners, nx, ny, 'float32')
+grid = SynBioBrainCUDA(grid_corners, nx, ny, checkerboard = False, dtype = 'float32')
 output_indeces = np.array(range(node_dim[0] * node_dim[1]))
 #output_indeces = np.array([0])
 #input_indeces = np.array([30, 32, 48, 50])
 
 #input_indeces = np.random.choice(np.array(range(node_dim[0] * node_dim[1])), size = (50,))
-input_indeces = np.array([9])
+input_indeces = np.array([0])
 #input_indeces = np.array([0,1,2])
 
 #input_indeces = np.array([1374, 1375, 1376, 1377, 1378])
@@ -65,7 +65,7 @@ plt.show()
 # calculate how much memory will be needed and loop however many times so it fits on GPU
 
 n_loops = 3
-checkerboard = False
+
 boundary_cond = 'periodic'
 params = [delta_t, n_time_steps, n_loops, ps, D, production_rate, boundary_cond, node_radius]
 heated_element = np.zeros(grid.n_vertices)
@@ -86,7 +86,7 @@ with Timer() as t:
         overall_Us.append(Us)
         overall_activated.append(activated_ts)
     '''
-    overall_Us,overall_activated = grid.synbio_brain(heated_element, grid_corners, node_dim, input_indeces, output_indeces, params)
+    overall_Us, overall_activated = grid.synbio_brain(heated_element, grid_corners, node_dim, input_indeces, output_indeces, params)
     print('max: ',np.max( overall_Us))
     print('mean: ',np.mean( overall_Us))
 
@@ -116,6 +116,7 @@ ax.set_ylabel('[AHL]')
 plot = ax.plot_trisurf(grid.vertex_positions[:,0], grid.vertex_positions[:,1], overall_Us[-1], shade=False, cmap=cm.coolwarm, linewidth=0)
 #plot = plt.imshow(overall_Us[-1].reshape(grid.nx, grid.ny), cmap='plasma')
 np.save("output/AHL_ts.npy", overall_Us)
+
 plt.show()
 
 
@@ -135,7 +136,10 @@ for i in range(0,len(overall_Us), frame_skip):
     ims.append([plot])
     pdf.savefig(fig)
 
+
+
 anim = animation.ArtistAnimation(fig, ims, interval = 200, blit = True, repeat_delay = 100)
+
 pdf.close()
 plt.show()
 

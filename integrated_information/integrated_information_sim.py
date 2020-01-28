@@ -129,8 +129,6 @@ all_activated = []
 for t in range(tmax):
     activated_nodes = get_act(u)
     all_activated.append(activated_nodes.reshape(N,N)[buffer: buffer + node_dim, buffer: buffer + node_dim].flatten())
-
-
     u = u + dt*(A.dot(u) + activated_nodes * prod_rate - u * deg_rate)
 
     u = u.reshape(N,N)
@@ -142,4 +140,12 @@ for t in range(tmax):
     u = u.flatten()
     us.append(u)
 all_activated = np.array(all_activated)
+# all_activated.shape = (tmax, N)
 print(int_inf(all_activated, 1, np.arange(tmax), 'binary', 0.5))
+
+# vary the tau and look at the pattern
+# could try e.g. sin(x), lots of ones
+# decoder based II in a paper, eventually move up to this
+# often use first minimum of mutual information or a region around first minimum
+# amount of data can matter so play around with this start at 10^6 also check how it varies with number of data choose number once the MI is smooth
+#  another method (Queyrannes algrithm )  to make it faster, prevents exhaustive search of partitions, in references 

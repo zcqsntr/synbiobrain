@@ -31,7 +31,10 @@ class Timer:
 
 
 class SynBioBrainCUDA(object):
+    '''
+    MASK FUNCTIONALITY BROKEM FOR CHECKERBOARD: FIX
 
+    '''
     def __init__(self, grid_corners, nx, ny, checkerboard = False, dtype='float64'):
         """
         Initialize a grid.
@@ -239,7 +242,7 @@ class SynBioBrainCUDA(object):
                 exp_level = 1.0;
 
 
-                {0} production =  activated_nodesb[i]  * (1-maskb[i]) * exp_level * production_rate;
+                {0} production =  activated_nodesb[i]  * exp_level * production_rate;
                 {0} diffusion = Aub[i];
                 {0} degradation = -0.0000001;
 
@@ -435,7 +438,7 @@ class SynBioBrainCUDA(object):
 
                     }}
                 }}
-
+                /*
                 if(t > 300){{
 
                     if(input_verticesb[n] == 1){{
@@ -445,7 +448,7 @@ class SynBioBrainCUDA(object):
                     }}
                 }}
 
-                /*
+
                 if(n==0){{
                     float sum = 0;
                     for (int i = 0; i< 10178; i++){{
@@ -492,7 +495,8 @@ class SynBioBrainCUDA(object):
         output_node_positions = [all_node_positions[i] for i in output_indeces]
 
         output_vertices, one_hot_out = self.assign_vertices(self.vertex_positions, output_node_positions, node_radius)
-
+        output_vertices = np.array(range(0, len(self.vertex_positions)))
+        one_hot_out = np.ones_like(one_hot_out)
         input_vertices, one_hot_in = self.assign_vertices(self.vertex_positions, input_node_positions, node_radius)
         barrier_vertices, one_hot_barrier = self.get_barrier_vertices(self.vertex_positions, grid_corners, node_dim, self.nx, self.ny)
 
@@ -512,6 +516,7 @@ class SynBioBrainCUDA(object):
 
         elif self.dtype == 'float32':
             all_u = np.zeros((n_steps, self.n_vertices), dtype = np.float32)
+            print('size: ', all_u.nbytes)
             Au = np.zeros(self.n_vertices, dtype = np.float32)
             current_u = np.array(u0, dtype = np.float32)
             ps = np.array(ps, dtype = np.float32)
@@ -647,10 +652,9 @@ class SynBioBrainCUDA(object):
         dt, n_timesteps, n_loops, ps, D, production_rate, boundary_cond, node_radius = params
         # get Au buffer for the time step
         Au_prg(np.int32(self.n_vertices - self.n_boundary_vertices), current_ub, Aub, non_boundary_nodesb,one_hot_barrierb, np.int32(self.nx), self.dx,  D, block = self.blockDim, grid=(int((self.n_vertices - self.n_boundary_vertices)//self.blockDim[0] + 1),int(1),int(1)))
-
         boundary_prg(np.int32(self.n_boundary_vertices), Aub, boundary_nodesb, current_ub, np.int32(self.n_vertices), np.int32(self.nx), self.dx, D,block = self.blockDim, grid=(int(self.n_boundary_vertices// self.blockDim[0] + 1),1,1))
 
-        add_next_u_prg( np.int32(self.n_vertices), Aub, boundary_flagsb, dt, np.int32(t), all_ub, current_ub, activatedb, node_times_onb, node_times_offb, maskb,  production_rate, block = self.blockDim, grid=(self.n_vertices//self.blockDim[0] + 1,1,1))
+        add_next_u_prg(np.int32(self.n_vertices), Aub, boundary_flagsb, dt, np.int32(t), all_ub, current_ub, activatedb, node_times_onb, node_times_offb, maskb,  production_rate, block = self.blockDim, grid=(self.n_vertices//self.blockDim[0] + 1,1,1))
         #add_next_u_prg.add_next_u(queue, (self.n_nodes,), None, Aub, boundary_flagsb, dt, np.int32(self.n_nodes), np.int32(t), activatedb, production_rate)#run kernel
         add_activated_prg( np.int32(self.n_vertices),current_ub, activatedb, all_activatedb, one_hot_inb, one_hot_outb, maskb, np.int32(t), psb, block = self.blockDim, grid=(int(self.n_vertices// self.blockDim[0] +1),1,1))
         #cl.enqueue_copy(queue, current_u, current_ub)
@@ -680,8 +684,6 @@ class SynBioBrainCUDA(object):
                 if t %1000 == 0:
                     print(t)
                     print('--------------------------------------------------------------------')
-
-
                 if self.checkerboard:
                     buffers = [all_u1b, current_u1b, mask1b, Aub, psb, node_times_onb, node_times_offb, all_activatedb, activatedb, boundary_nodesb, non_boundary_nodesb, boundary_flagsb, one_hot_inb, one_hot_outb, one_hot_barrierb]
                     self.timestep(programs, buffers, params, t)

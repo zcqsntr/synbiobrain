@@ -31,7 +31,7 @@ input_indeces = np.array([45])
 
 #input_indeces = np.array([1374, 1375, 1376, 1377, 1378])
 
-one_hot_in = np.zeros(grid.n_nodes)
+one_hot_in = np.zeros(grid.n_vertices)
 
 one_hot_in[input_indeces] = 1
 node_radius = 20/40
@@ -42,21 +42,6 @@ except:
     pass
 
 #output_indeces = np.delete(output_indeces, input_indeces)
-with Timer() as t:
-    all_node_positions = get_node_positions(node_dim, grid_corners)
-    input_node_positions = [all_node_positions[i] for i in input_indeces]
-    print('input:', input_node_positions)
-    output_node_positions = [all_node_positions[i] for i in output_indeces]
-    vertex_positions = np.array([grid.get_node_position(i) for i in range(grid.n_nodes)])
-    print('positions:', len(vertex_positions))
-print(t.interval)
-with Timer() as t:
-    output_vertices, one_hot_out = assign_vertices(vertex_positions, output_node_positions, node_radius)
-    print(output_vertices.shape)
-    input_vertices, one_hot_in = assign_vertices(vertex_positions, input_node_positions, node_radius)
-    barrier_vertices, one_hot_barrier = get_barrier_vertices(vertex_positions, grid_corners, node_dim, nx, ny)
-
-print('ins:', input_vertices)
 #one_hot_out = np.ones(grid.n_nodes)
 
 #one_hot_out = np.zeros(grid.n_nodes)
@@ -75,17 +60,17 @@ delta_t = 100
 n_time_steps = 2000
 
 
-
 # calculate how much memory will be needed and loop however many times so it fits on GPU
 
 n_loops = 1
-heated_element = np.zeros(grid.n_nodes)
+heated_element = np.zeros(grid.n_vertices)
 time_elapsed = 0
-
+boundary_cond = 'periodic'
+params = [delta_t, n_time_steps, n_loops, ps, D, production_rate, boundary_cond, node_radius]
 while True:
 
 
-    overall_Us,overall_activated = grid.synbio_brain(heated_element, delta_t, n_time_steps, one_hot_in, one_hot_out, one_hot_barrier, ps, D, production_rate, n_loops, boundary_cond = 'insulating')
+    overall_Us,overall_activated = grid.synbio_brain(heated_element, grid_corners, node_dim, input_indeces, output_indeces, params)
     print('max: ',np.max( overall_Us))
     print('mean: ',np.mean( overall_Us))
 

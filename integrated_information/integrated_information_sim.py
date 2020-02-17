@@ -6,6 +6,7 @@ import matplotlib.backends.backend_pdf
 import matplotlib as mpl
 import matplotlib.animation as animation
 import matplotlib.pyplot as plt
+import matplotlib.cm as cm
 from phi_empirical_x1 import *
 
 node_dim = 3 # dimension in terms of number of  nodes
@@ -41,14 +42,21 @@ def send_func(t):
     else:
         return 0
 
+def send_func_sin(t):
+    # function of the sender node, for now all senders have the same input function, but this could be changed
+    return np.abs(np.sin(t/scale))
+
+
 def get_act(u):
     # gets the activated nodes
     rec_prod = np.ones_like(u)
+    #print(u)
+
     rec_prod[u > thresh_max] = 0
     rec_prod[u < thresh_min] = 0
     rec_prod *= rec_mask
 
-    send_prod = send_func(t)*send_mask
+    send_prod = send_func_sin(t)*send_mask
 
     return rec_prod + send_prod
 
@@ -97,80 +105,94 @@ def plot():
 
     plt.show()
 
+for scale in [100000, 1000000]:
 
-A = create_A(N) # get the diffusion matrix
-print(A)
-
-# dU = Au + prod + deg
-
-# this tells which nodes are recievers
-rec_mask = np.zeros((N,N))
-rec_mask[buffer: buffer + node_dim, buffer: buffer + node_dim] = 1
-
-rec_mask[buffer,buffer] = 0
-print(rec_mask)
-rec_mask = rec_mask.flatten()
+    D = 3e-6 #cm^2/s
 
 
-#this tells which nodes are senders
-send_mask = np.zeros((N,N))
-send_mask[buffer,buffer] = 1
-print(send_mask)
-send_mask = send_mask.flatten()
+    A = create_A(N)*D # get the diffusion matrix
+    print(A)
 
-u0 = np.zeros((N,N))
+    # dU = Au + prod + deg
 
-u = u0.flatten()
-us = [u]
-deg_rate = 0.1
+    # this tells which nodes are recievers
+    rec_mask = np.zeros((N,N))
+    rec_mask[buffer: buffer + node_dim, buffer: buffer + node_dim] = 1
 
-# simulation parameters
-dt = 0.1 #stable up to 0.2
-tmax = int(1e5)
-thresh_min = 0.01
-thresh_max = 0.6
-prod_rate = 1
-frame_skip = 1
-all_activated = []
+    rec_mask[buffer,buffer] = 0
+    print(rec_mask)
+    rec_mask = rec_mask.flatten()
 
-# do simulation
-for t in range(tmax):
-    activated_nodes = get_act(u)
-    all_activated.append(activated_nodes.reshape(N,N)[buffer: buffer + node_dim, buffer: buffer + node_dim].flatten())
-    u = u + dt*(A.dot(u) + activated_nodes * prod_rate - u * deg_rate)
 
-    u = u.reshape(N,N)
-    # apply insulating boundary conditions
-    u[0,:] = u[1,:]
-    u[-1,:] = u[-2,:]
-    u[:,0] = u[:,1]
-    u[:,-1] = u[:,-2]
-    u = u.flatten()
-    us.append(u)
-all_activated = np.array(all_activated)
-# all_activated.shape = (tmax, N)
-print(all_activated.shape)
+    #this tells which nodes are senders
+    send_mask = np.zeros((N,N))
+    send_mask[buffer,buffer] = 1
+    print(send_mask)
+    send_mask = send_mask.flatten()
 
-#plot() # comment this to stop plotting
-taus = range(20)
-IIs = []
-MIs = []
-II_modified = []
-for i, tau in enumerate(taus):
-    print(i)
-    results = int_inf(all_activated, tau, np.arange(tmax), 'binary', 0.5)
-    IIs.append(results[4])
-    MIs.append(results[5])
-    II_modified.append(results[6])
-    print()
+    u0 = np.zeros((N,N))
 
-taus = np.array(taus)*0.1
-plt.plot(taus, IIs, label = 'II')
-plt.plot(taus, MIs, label = 'MI')
-plt.plot(taus, II_modified, label = 'II mod')
-plt.legend()
-plt.xlabel('tau (hours)')
-plt.show()
+    u = u0.flatten()
+    us = [u]
+    deg_rate = 0.1*D
+
+    # simulation parameters
+    dt = 0.02/ D #stable up to 0.2
+
+    print(' delta t (hours)', dt /(60**2))
+    tmax = int(1e4)
+    thresh_min = 0.01
+    thresh_max = 0.6
+    prod_rate = 1*D
+    frame_skip = 1
+    all_activated = []
+
+    # do simulation
+    for t in range(tmax):
+        activated_nodes = get_act(u)
+        all_activated.append(activated_nodes.reshape(N,N)[buffer: buffer + node_dim, buffer: buffer + node_dim].flatten())
+        u = u + dt*(A.dot(u) + activated_nodes * prod_rate - u * deg_rate)
+        #print(u)
+
+        u = u.reshape(N,N)
+        # apply insulating boundary conditions
+        u[0,:] = u[1,:]
+        u[-1,:] = u[-2,:]
+        u[:,0] = u[:,1]
+        u[:,-1] = u[:,-2]
+        u = u.flatten()
+        us.append(u)
+    all_activated = np.array(all_activated)
+    # all_activated.shape = (tmax, N)
+    print(all_activated.shape)
+
+    #plot() # comment this to stop plotting
+
+
+    taus = range(10)
+    IIs = []
+    MIs = []
+    II_modified = []
+    for i, tau in enumerate(taus):
+        print(i)
+        results = int_inf(all_activated, tau, np.arange(tmax), 'binary', 0.5)
+        IIs.append(results[4])
+        MIs.append(results[5])
+        II_modified.append(results[6])
+        print()
+
+    np.save('IIs_' + str(scale) + '.npy', np.array(IIs))
+    np.save( 'MIs_' + str(scale) + '.npy', np.array(MIs))
+    np.save( 'IIs_modified_' + str(scale) + '.npy', np.array(II_modified))
+    plt.figure()
+    taus = np.array(taus)*dt/(60**2)
+    plt.plot(taus, IIs, label = 'II')
+    plt.plot(taus, MIs, label = 'MI')
+    plt.plot(taus, II_modified, label = 'II mod')
+    plt.legend()
+    plt.xlabel('tau (hours)')
+    plt.savefig('Int_inf_' + str(scale) + '.png')
+        #plt.show()
 
 # vary the tau and look at the pattern
 # could try e.g. sin(x), lots of ones

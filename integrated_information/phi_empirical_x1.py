@@ -8,7 +8,8 @@ def binarise(X, threshold):
 
 def probabilities(X):
     """Calculates empirical probability of each state (row) in X, returned as list of probabilities."""
-    uniq, counts = np.unique((X), return_counts=True, axis=0)
+    uniq, counts = np.unique((X), return_counts=True, axis=0) # gets unique elements of array and number of times they occurred
+
     probs = np.divide(counts, np.sum(counts)).copy()
     return probs
 
@@ -18,39 +19,61 @@ def create_mask(X):
     array_channel =  range(num_channel)
     stop = num_channel // 2
     mask     = []
+
     if num_channel%2==0:
+
         for L in range(1, num_channel-(stop-1)):
-            for subset in itertools.combinations(array_channel, L):
-                mask.append(list(subset))
+            for subset in itertools.combinations(array_channel, L): # combinations returns L length subsequences of array_channel
+                mask.append(list(subset)) # append all the subsequences to mask
+
         sub_mask = []
         for i in mask:
-            if len(i)== int(num_channel/2):
+            if len(i)== int(num_channel/2): # if subsequence is length n_channels/2
                 sub_mask.append(i)
+
         sub_mask = sub_mask[0:int(len(sub_mask)/2)]
         mask     = mask[0:(len(mask)-len(sub_mask))]
-    else:
+
+
+    else: #if not even
+        # this gets all the sub sequences that are less than n_channels/2 long
         for L in range(1, num_channel-(stop)):
-            for subset in itertools.combinations(array_channel, L):
+            for subset in itertools.combinations(array_channel, L): # combinations returns L length subsequences of array_channel
                 mask.append(list(subset))
+
     return mask
 
 def partitions(X, tspan, tau):
-    """Creates all possible bipartition sets."""
+    """
+    Creates all possible bipartition sets.
+    labelled_partitions is all partitions labelled by the mask that created them
+    """
     T = len(tspan)
     t_range1 = list(np.arange(0, int(T-tau),1))
     t_range2 = list(np.arange(int(tau), int(T),1))
+
     mask = create_mask(X)
+
+
     num_channel = X.shape[1]
     labelled_partitions = []
-    for i_mask in range(len(mask)):
-        XA  = X[:, mask[i_mask]]
-        XB  = X[:, [col for col in range(0,num_channel) if col not in mask[i_mask]]]
+
+    for i_mask in range(len(mask)): # for each subsequence of channels in mask
+
+        # XA and XB are two parts of a bipartition
+        XA  = X[:, mask[i_mask]] # get the time series for the channels in the subsequence
+        XB  = X[:, [col for col in range(0,num_channel) if col not in mask[i_mask]]] # get the time series of the other channels
+
+        # X1 and X2 are time series for all chanells offset by tau
         X1  = X[t_range1, :]
         X2  = X[t_range2, :]
+
+        # time series for the bipartions offset by tau
         XA1 = XA[t_range1,:]
         XA2 = XA[t_range2,:]
         XB1 = XB[t_range1,:]
         XB2 = XB[t_range2,:]
+
         X1X2 = np.concatenate((X1,X2),axis=1)
         XA1XA2 = np.concatenate((XA1,XA2),axis=1)
         XB1XB2 = np.concatenate((XB1,XB2),axis=1)
@@ -58,41 +81,65 @@ def partitions(X, tspan, tau):
         maskA = str(mask[i_mask])
         lsets = [X1, X2, XA1, XA2, XB1, XB2, X1X2, XA1XA2, XB1XB2, XA2XB2]
         labelled_partitions.append((maskA, lsets))
+
     return labelled_partitions
 
 def probs_state(X, tau, tspan, code,  thrs):
-    """Returns probabilities for each of the states across all partitions."""
+    """Returns probabilities for each of the states across all partitions.
+    all_states is a dictionary with the mask that gave the bipartition as the key
+    and a list of the lists of proabilities for each state for each bipartition
+    """
     all_states = {}
     if code == 'binary':
         Xbin = binarise(X, thrs)
+
     partition_sets = partitions(Xbin, tspan, tau)
+
+
     for maskA, partition in partition_sets:
         table_freq_mask = []
         for set in partition:
+
+
             table_freq_mask.append(list(probabilities(set)))
         all_states.update({maskA:table_freq_mask})
+
     return(all_states)
 
 def information_metrics(states):
+    """
+    part_info is a dictionary with keys that are the bipartition masks and values
+     that are dictionaries with keys that are the bipartition states and values
+     that are the entropy of the pdist of these states
+    """
     part_info  = {}
-    for key, value in states.items() :
+    for key, value in states.items() : # key is the bipartition mask and value is the list of lists of probs for each state for each bipartition
         information_metrics = {}
-        for i in range(0, len(states[str(key)])):
-            df_states = states[str(key)][i]
+        for i in range(0, len(states[str(key)])): # for each bipartition
+            df_states = states[str(key)][i] # get the probs of states
             states_labels= ['X1', 'X2','XA1', 'XA2', 'XB1', 'XB2', 'X1X2', 'XA1XA2', 'XB1XB2', 'XA2XB2']
-            H = (-1.0)*sum(np.log2(np.array(df_states))*df_states)
-            information_metrics.update({'H'+states_labels[i]  :H})
+            H = (-1.0)*sum(np.log2(np.array(df_states))*df_states) # get the entropy of the prob dist
+            information_metrics.update({'H'+states_labels[i]  :H}) #put entropy of this bipartition into dict
         part_info.update({str(key):information_metrics})
+
+    #print(part_info)
     return(part_info)
 
 def eff_information(part_info):
+
+    """
+    Calculates the effective information, which is the mutual information
+    generated by the whole system minus the sum of the mutual information
+    generated by the parts within the bipartition
+    """
     part_eff_info = {}
+    #for each bipartion mask and entropy of each distribution
     for key, value in part_info.items():
         eff_information = {}
-        IA   = part_info[str(key)]['HXA1'] + part_info[str(key)]['HXA2'] - part_info[str(key)]['HXA1XA2']
-        IB   = part_info[str(key)]['HXB1'] + part_info[str(key)]['HXB2'] - part_info[str(key)]['HXB1XB2']
-        I    = part_info[str(key)]['HX1']  + part_info[str(key)]['HX2']  - part_info[str(key)]['HX1X2']
-        IAB  = part_info[str(key)]['HXA2']  + part_info[str(key)]['HXB2']  - part_info[str(key)]['HXA2XB2']
+        IA   = part_info[str(key)]['HXA1'] + part_info[str(key)]['HXA2'] - part_info[str(key)]['HXA1XA2'] # mutual information generated by A
+        IB   = part_info[str(key)]['HXB1'] + part_info[str(key)]['HXB2'] - part_info[str(key)]['HXB1XB2'] # mutual information generated by B
+        I    = part_info[str(key)]['HX1']  + part_info[str(key)]['HX2']  - part_info[str(key)]['HX1X2']  # mutual information generated by the whole system
+        IAB  = part_info[str(key)]['HXA2']  + part_info[str(key)]['HXB2']  - part_info[str(key)]['HXA2XB2'] # mutual information of the parts in the bi partition at t2 
         Ieff = I- (IA+IB)
         IeffD = I- (IA+IB) + IAB
         IeffNorm = Ieff/ min(part_info[str(key)]['HXA2'], part_info[str(key)]['HXB2'])
@@ -107,13 +154,15 @@ def int_inf(X, tau, tspan, code,  thrs):
     states                = probs_state(X, tau, tspan, code,  thrs)
     partition_inf_metrics = information_metrics(states)
     I_output = eff_information(partition_inf_metrics)
+
     I_eff    = I_output[0]
     I        = I_output[1]
     II_n   = {str(key): I_eff[str(key)]['Eff_inf_norm'] for key, value in I_eff.items()  }
+    #print(I_output)
     ABmin  = min(II_n.items(), key=lambda x: x[1])
     II     = {str(key): I_eff[str(key)]['Eff_inf'] for key, value in I_eff.items()}[ABmin[0]]
     IID     = {str(key): I_eff[str(key)]['Eff_infD'] for key, value in I_eff.items()}[ABmin[0]]
-    print( 'Integrated information is', II ) # this is the important one 
+    print( 'Integrated information is', II ) # this is the important one
     print( 'Integrated information (modified) is', IID )
     print( 'Mutual information (system) is', I )
     print( 'Minimum information bipartition is', ABmin)

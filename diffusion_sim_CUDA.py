@@ -244,7 +244,7 @@ class SynBioBrainCUDA(object):
 
                 {0} production =  activated_nodesb[i]  * exp_level * production_rate;
                 {0} diffusion = Aub[i];
-                {0} degradation = -0.0000001;
+                {0} degradation = -0.000001;
 
                 /*
                 if (current_ub[i] > 0.001) {{
@@ -264,7 +264,7 @@ class SynBioBrainCUDA(object):
 
                 {0} u = current_ub[i];
 
-                {0} du = dt * (production + diffusion);
+                {0} du = dt * (production + diffusion + degradation);
 
                 if(-du > u){{
                     du = -u;

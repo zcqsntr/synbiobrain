@@ -9,7 +9,7 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 
 
-os.environ['PYOPENCL_CTX'] = '0'
+
 grid_corners = np.array([[-10, 10], [-10, 10]])
 
 nx = 300
@@ -25,13 +25,13 @@ output_indeces = np.array(range(node_dim[0] * node_dim[1]))
 #input_indeces = np.array([30, 32, 48, 50])
 
 #input_indeces = np.random.choice(np.array(range(node_dim[0] * node_dim[1])), size = (50,))
-input_indeces = np.array([0, 1, 4, 8])
+input_indeces = np.array([0])
 #input_indeces = np.array([0,1,2])
 
 #input_indeces = np.array([1374, 1375, 1376, 1377, 1378])
 
 
-node_radius = 20/40
+node_radius = 1/3
 
 try:
     one_hot_in[input_indeces] = 1
@@ -42,15 +42,14 @@ except:
 
 #one_hot_out[4354] = 1
 
-#production_rate = 0.00001
-production_rate = 0.00001
-ps = [10**(-1.9),10**(-0.6) ,10**(-2), 10**(-0.4)]
+production_rate = 0.000001
+ps = [10**(-1.9),10**(-0.6) ,10**(-1.9), 10**(-0.6)] # thresholds in micro molar
 #ps = [10**(-1.9),10**(-0.6) ,10**(-2), 10]
 print(ps)
 
-delta_t = 100
-n_time_steps = 2000
-frame_skip = 300
+delta_t = 10
+n_time_steps = 1000
+frame_skip = 50
 X = grid.vertex_positions[:,0]
 Y = grid.vertex_positions[:,1]
 X = np.arange(-1, 1 + grid.dx, grid.dx)
@@ -65,11 +64,17 @@ plt.show()
 
 # calculate how much memory will be needed and loop however many times so it fits on GPU
 
-n_loops = 6
+n_loops = 2
 
 boundary_cond = 'periodic'
 params = [delta_t, n_time_steps, n_loops, ps, D, production_rate, boundary_cond, node_radius]
+print('SIMULATION TIME: ', n_loops * delta_t * n_time_steps/(60*60))
 heated_element = np.zeros(grid.n_vertices)
+all_node_positions = grid.get_node_positions(node_dim, grid_corners)
+print(all_node_positions)
+vertices, one_hot_vertices = grid.assign_vertices(grid.vertex_positions, np.transpose(all_node_positions[4]).reshape(1,2), node_radius)
+
+heated_element[vertices] = 90
 
 with Timer() as t:
 
@@ -132,7 +137,7 @@ for i in range(0,len(overall_Us), frame_skip):
     fig.suptitle('time: ' + str(delta_t*i))
     #plot = ax.plot_surface(X, Y, Us[i].reshape(grid.nx, grid.ny), rstride=1, cstride=1, cmap=cm.coolwarm,
     #    linewidth=0, antialiased=False)
-    plot = plt.imshow(overall_Us[i].reshape(grid.nx, grid.ny), cmap='plasma', vmin = 0, vmax = 0.25)
+    plot = plt.imshow(overall_Us[i].reshape(grid.nx, grid.ny), cmap='plasma', vmin = 0)
 
     ims.append([plot])
     pdf.savefig(fig)
@@ -142,6 +147,7 @@ for i in range(0,len(overall_Us), frame_skip):
 anim = animation.ArtistAnimation(fig, ims, interval = 200, blit = True, repeat_delay = 100)
 
 pdf.close()
+plt.title('AHL_conc')
 plt.show()
 
 plt.close()

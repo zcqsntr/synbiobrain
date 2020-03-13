@@ -1,0 +1,1 @@
+The diffusion coeeficient just chanegs the rate at which things happen, doeasnt effect the II 

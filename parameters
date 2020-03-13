@@ -1,0 +1,12 @@
+diffusion coefficient of ahl in water = 4.9*10^{-10} m^2/s, fitted value for diffusion coeff in agar = 3 * 10^{-10} m^2/s  https://onlinelibrary.wiley.com/doi/full/10.1111/1574-6968.12394
+diffusion coefficient for ahl in agar: 5*10**(-10), https://www.biorxiv.org/content/biorxiv/early/2017/11/18/220244.full.pdf
+half life of AHL in absence of bacteria at PH 7 = 7 days  https://onlinelibrary.wiley.com/doi/full/10.1111/1574-6968.12394
+
+AHL decay 0.01 min^(-1) A synthetic multicellular system for programmed pattern formation
+
+E coli division time, minimum = 20mins: https://www.ncbi.nlm.nih.gov/pmc/articles/PMC2063475/
+
+AHL half life: seven days: https://watermark.silverchair.com/352-2-198.pdf?token=AQECAHi208BE49Ooan9kkhW_Ercy7Dm3ZL_9Cf3qfKAc485ysgAAAmcwggJjBgkqhkiG9w0BBwagggJUMIICUAIBADCCAkkGCSqGSIb3DQEHATAeBglghkgBZQMEAS4wEQQMb7a39UXWp8kRMJpvAgEQgIICGs7RPnfvuQgBvHiL193kE1icXjoBVgb-C-SiAXgfTwHASweEQe28t6fnQH_tuKV_7jy0ApnRSIGeP_lmkCkBYRecKsc8jHKTRex-jhrQy_r2JmLDplJgK1IzA3nloGE9WVVRJ9ic7DYiUU1vqL-j7ND22jgZQbSKglivtubZIBPBUeB-W1bbNF7TvCnOSA8FpKlex4aJ5DGLy5ndQUqR4SVdN5zGpJWbvMhfkFLfcUn9Demh0EB9mUeyqEeblbXzltw6niilo2X8PG2K3XWOszaBVj636XbpqWha1GwD-aTIzuAdlnbbjSNN2z4fXUyKjKlQXYgI6lWd_4pplGIm_oT2VNiAvZTJvPZLi6Jd-_zLtgJuQ06YhT5HUj5i_fAz7CjO7z0Pjj9v9GYSIlpb9G-mBATRKPXYwYOIdQDXflniU9w1h6mZeWcmnKEVfdZe6iizShagtwRVohbLYcdTfwjDKtnz2wI_WQ3BhH34-lh9S7CzFx5Xxoi8SKTF2qnPnJ4ZvYwD8rV4wgdKy3elBiuZ67Y_Ki487N3CvBBTjBR-oksJDaEmxCQ0Ze2iewwdiPQ5kmf5r9x0YyzgmDsCA5cB5hmtLqvTwKj9-j8Y3xpeDzrtj2NfVcOTZBOkxBdRARF-z1eAKtA1ib8pOdsF89fNXPcotGXKaM5ItYcSTIJr2fUMCjTVL06Y0pX3Da8Tm5ZBU0YUKrFEgdk
+
+
+AHL model: http://2015.igem.org/Team:ETH_Zurich/Modeling/AHL_Module#Single_Cell_Model

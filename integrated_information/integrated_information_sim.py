@@ -74,8 +74,7 @@ def plot():
         plot = plt.imshow(all_activated[i].reshape(node_dim, node_dim), cmap = 'inferno')
 
         ims.append([plot])
-
-
+        
     anim = animation.ArtistAnimation(fig, ims, interval = 200, blit = True, repeat_delay = 100)
     plt.show()
 

@@ -4,7 +4,7 @@ import numpy as np
 import tensorflow as tf
 import math
 import random
-from train_network import create_network, generate_logic_func
+from train_network import *
 import matplotlib.pyplot as plt
 
 from numpy.random import random
@@ -30,7 +30,9 @@ def AHL_func(r):
     return 47/r**2
 
 def AHL_func(r):
-    return 1/r
+
+    weight = 1/r
+    return weight
 
 def get_distance(p1, p2):
     return np.sqrt( (p1[0] - p2[0])**2 +  (p1[1] - p2[1])**2 )
@@ -38,23 +40,27 @@ def get_distance(p1, p2):
 def get_weights(grid):
     hidden_weights = []
 
-    for input_pos in grid[0]:
-        weights = []
-        for hidden_pos in grid[1]:
-            r = get_distance(input_pos, hidden_pos)
-            weights.append(AHL_func(r))
-        hidden_weights.append(weights)
+    all_weights = []
 
-    output_weights = []
+    for i in range(len(grid)-1):
+        layer_weights = []
+        positions = grid[i]
+        next_positions = grid[i+1]
 
-    for hidden_pos in grid[1]:
-        weights = []
-        for output_pos in grid[2]:
-            r = get_distance(hidden_pos, output_pos)
-            weights.append(AHL_func(r))
-        output_weights.append(weights)
+        for pos in positions:
+            weights = []
+            for next_pos in next_positions:
 
-    return [np.array(hidden_weights), np.array(output_weights)]
+                r = get_distance(pos, next_pos)
+
+                weights.append(AHL_func(r))
+
+            layer_weights.append(weights)
+
+
+        all_weights.append(np.array(layer_weights))
+
+    return all_weights
 
 def get_weights_one_AHL(grid):
     hidden_weights = []
@@ -80,7 +86,9 @@ def get_weights_one_AHL(grid):
 def get_fitness(weights, target_weights):
 
     fitness = 0
+
     for i in range(len(weights)):
+
         fitness -= np.linalg.norm((weights[i] - target_weights[i]))
         '''
         print(np.linalg.norm((weights[i] - target_weights[i])))
@@ -113,13 +121,18 @@ def recombine(grid1, grid2):
                 grid4[i][j] = grid1[i][j]
     return grid3, grid4
 
-def generate_random_grids(n, n_hidden):
+def generate_random_grids(n, layer_sizes):
     grids = []
 
+    print('layer_sizes: ')
+    print(layer_sizes)
     for i in range(n):
-        grids.append([[[random()*10, random()*10] for i in range(n_in)],
-                        [[random()*10,random()*10] for i in range(n_hidden)] ,
-                        [[random()*10, random()*10] for i in range(n_out)]])
+        grid = []
+
+        for l in layer_sizes:
+            l = np.sum(l) # combine nodes of all funcitions
+            grid.append([[random()*10, random()*10] for i in range(l)])
+        grids.append(grid)
     return grids
 
 def cart2pol(x, y):
@@ -136,13 +149,12 @@ def move_concurrent_nodes(grid, node_radius):
     #DEBUG THIS
     #checks to see if any nodes on top of each other, if so moves them
 
-
     for i in range(len(grid)):
-        for j in range(len(grid[i])): # randomly swap some nodes
+        for j in range(len(grid[i])):
             pos = grid[i][j]
 
             for k in range(len(grid)):
-                for l in range(len(grid[k])): # randomly swap some nodes
+                for l in range(len(grid[k])):
                     pos2 = grid[k][l]
                     dir = np.array(pos) - np.array(pos2)
                     mag = np.linalg.norm(dir)
@@ -159,6 +171,8 @@ def move_concurrent_nodes(grid, node_radius):
                             grid[i][j][1] += unit_vec[1] * translation_mag
 
 
+
+
     return grid
 
 def get_node_positions(minimal_model, n_gens, initial_pop):
@@ -167,21 +181,30 @@ def get_node_positions(minimal_model, n_gens, initial_pop):
     '''
     target_weights = minimal_model[1]
 
-    #for one AHL
-    target_weights = [target_weights[0], np.array([0]), target_weights[1]]
 
-    n_h1 = np.sum(minimal_model[0][0:5]) # the number of threshold on nodes
+
     #target_weights = np.load('weights.npy', allow_pickle = True)
 
-    grids = generate_random_grids(initial_pop, n_h1+n_h2)
+    grids = generate_random_grids(initial_pop, layer_sizes)
+    print('weights: ')
+    for i in range(len(get_weights(grids[0]))):
+        if np.array(get_weights(grids[0])[i]).shape != target_weights[i].shape:
+            print('WEIGHTS AND TARGET WEIGHTS DIFFERENT SHAPES')
+            sys.exit()
+    print()
+
     grids = [move_concurrent_nodes(grid, node_radius) for grid in grids]
+
+
+
     for gen in range(n_gens):
         print('generation: ', gen)
         # selection
         fitnesses = []
 
         for grid in grids:
-            weights = get_weights_one_AHL(grid)
+            weights = get_weights(grid)
+
             fitness = get_fitness(weights, target_weights)
             fitnesses.append(fitness)
 
@@ -197,14 +220,17 @@ def get_node_positions(minimal_model, n_gens, initial_pop):
         reproduce = indices[-5000:] # because fitness negative
         print(fitnesses[indices[-1]])
 
-        if gen %10 == 0:
 
-            print('best weights so far: ', get_weights_one_AHL(best_grid))
+        if gen % 10 == 0:
+
+            print('best weights so far: ', get_weights(best_grid))
+
             print('best positions so far: ', best_grid)
+
             print('target weights: ', target_weights)
             print()
             print('best fitness: ', best_fitness)
-            plot_grid(grids[indices[-1]],gen, n_h1)
+            plot_grid(grids[indices[-1]],gen, layer_sizes)
 
         good_grids = []
 
@@ -230,34 +256,45 @@ def get_node_positions(minimal_model, n_gens, initial_pop):
             good_grids.append(child)
 
         grids = [move_concurrent_nodes(grid, node_radius) for grid in good_grids]
+        for l in grids[0]:
+            print(np.array(l).shape)
 
-    weights = get_weights_one_AHL(best_grid)
+    weights = get_weights(best_grid)
     print('wegihts from positions: ')
     print(weights)
 
     return best_grid, best_fitness
 
 
-def plot_grid(grid, iter, n_h1):
+def plot_grid(grid, iter, layer_sizes):
 
     plt.figure()
 
     # plot nodes
-    colours = ['g', 'blue', 'aqua',  'red']
+
     r = node_radius
-    for node in grid[0]:
+    for node in grid[0]: #input
         circle = plt.Circle((node[0], node[1]), radius = r, fc = 'g', label = '(' + str(round(node[0], 1)) + ',' + str(round(node[1], 1)) + ')')
         plt.gca().add_patch(circle)
 
-    for i, node in enumerate(grid[1]):
-        if i < n_h1:
-            circle = plt.Circle((node[0], node[1]), radius =r, fc = 'blue', label = '(' + str(round(node[0], 1)) + ',' + str(round(node[1], 1)) + ')')
-            plt.gca().add_patch(circle)
-        else:
-            circle = plt.Circle((node[0], node[1]), radius = r, fc = 'aqua', label = '(' + str(round(node[0], 1)) + ',' + str(round(node[1], 1)) + ')')
-            plt.gca().add_patch(circle)
+    hl_sizes = layer_sizes[1:-1]
 
-    for node in grid[2]:
+    hidden_layers = grid[1:-1]
+    colours = [['blue', 'aqua'], ['purple', 'magenta']]
+
+    for i, layer in enumerate(hidden_layers):
+
+        h1_size = hl_sizes[i][0]
+
+        for j, node in enumerate(layer):
+            if j < h1_size:
+                circle = plt.Circle((node[0], node[1]), radius =r, fc = colours[i][0], label = '(' + str(round(node[0], 1)) + ',' + str(round(node[1], 1)) + ')')
+                plt.gca().add_patch(circle)
+            else:
+                circle = plt.Circle((node[0], node[1]), radius = r, fc = colours[i][1], label = '(' + str(round(node[0], 1)) + ',' + str(round(node[1], 1)) + ')')
+                plt.gca().add_patch(circle)
+
+    for node in grid[-1]: #output
         circle = plt.Circle((node[0], node[1]), radius = r, fc = 'red', label = '(' + str(round(node[0], 1)) + ',' + str(round(node[1], 1)) + ')')
         plt.gca().add_patch(circle)
 
@@ -267,61 +304,70 @@ def plot_grid(grid, iter, n_h1):
 
     plt.legend()
     plt.axis('scaled')
-    plt.savefig(str(iter) + '.png')
+    plt.savefig(working_dir +  '/'+str(iter) + '.png')
 
 
 if __name__ == '__main__':
+    working_dir = sys.argv[1]
 
-    x = np.array(range(1,46))*0.2
-    plt.plot(x, AHL_func(x))
-    plt.show()
+    #node_radius  = 0.01 #cm used for one layer XNOR
+    node_radius = 0.05
+    n_gens = 100
+    initial_pop = 10000
+    working_dir = sys.argv[1]
 
-    node_radius  = 0.01 #cm
-    n_gens = 200
-    initial_pop = 100000
+    training_func = generate_gut_data
+    minimal_model = np.load(working_dir + '/minimal_model.npy', allow_pickle = True)
+    print('minimal model: ', minimal_model)
+    print('weights:', minimal_model[1])
+    for weights in minimal_model[1]:
+        print()
+        print(weights)
 
-    minimal_model = np.load('network_out/minimal_model.npy', allow_pickle = True)
-    print(minimal_model)
+
     #node_positions = np.load('network_out/node_positions.npy', allow_pickle = True)
-    n_in = 2
-    n_h1 = sum(minimal_model[0][0:5])
-    n_h2 = sum(minimal_model[0][5:])
-    n_out = 1
-    print()
+    #
+
+
+    layer_sizes = minimal_model[0]
 
     node_positions, fitness = get_node_positions(minimal_model, n_gens, initial_pop)
 
-    np.save('network_out/node_positions.npy', node_positions)
-    plot_grid(node_positions, 'final', 1)
+    np.save(working_dir + '/node_positions.npy', node_positions)
+    plot_grid(node_positions, 'final', layer_sizes)
 
-    weights = get_weights_one_AHL(node_positions)
+    weights = get_weights(node_positions)
     print('weights from positions: ')
     print(weights)
 
     print(node_positions)
 
+    minimal_network = create_network(layer_sizes, minimal_model[1])[0]
+    model_from_pos = create_network(layer_sizes, weights)[0]
 
+    n = 10000
+    x_test, y_test = training_func(n)
+    x_test = np.random.random(size=x_test.shape)
 
-    minimal_network = create_network(n_in, n_h1, n_h2, n_out, minimal_model[1])
-    model_from_pos = create_network(n_in, n_h1, n_h2, n_out, weights)
+    ys = minimal_network.predict(x_test)
 
-    x_test, y_test = generate_logic_func(10000, [1,0,0,1])
+    print(x_test.shape)
+    print(ys.shape)
 
-
-    ys = minimal_network.predict(x_test).reshape(10000,)
     print(ys)
-
+    print(np.argmax(ys, 0).shape)
     plt.close('all')
     plt.figure()
-    plt.scatter(x_test[:,0], x_test[:,1], c = ys)
+    plt.scatter(x_test[:, 0], x_test[:, 1], c = np.argmax(ys, 1).reshape(10000,))
+    plt.savefig(working_dir + '/model_from_minimal_network.png')
 
-    ys = model_from_pos.predict(x_test).reshape(10000,)
-    print(ys)
+
+    ys = model_from_pos.predict(x_test)
 
     plt.figure()
-    plt.scatter(x_test[:,0], x_test[:,1], c = ys)
-    plt.show()
+    plt.scatter(x_test[:, 0], x_test[:, 1], c = np.argmax(ys, 1).reshape(10000,))
 
+    plt.savefig(working_dir + '/model_from_pos.png')
     print('---------------------------------------------------------------')
     print()
 

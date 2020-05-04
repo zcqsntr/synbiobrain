@@ -12,7 +12,8 @@ from get_grid_config import plot_grid
 import copy
 from matplotlib.animation import FFMpegWriter
 from scipy import optimize
-
+import sys
+from train_network import *
 
 
 class FasterFFMpegWriter(FFMpegWriter):
@@ -62,7 +63,7 @@ def plot():
 
     anim = animation.ArtistAnimation(fig, ims, interval = 200, blit = True, repeat_delay = 100)
 
-    anim.save('network_out/activation.mp4', writer = writer)
+    anim.save(working_dir + '/activation.mp4', writer = writer)
     '''
     X = np.arange(nx)
     Y = np.arange(ny)
@@ -212,7 +213,7 @@ class NodeSimPython(object):
     MASK FUNCTIONALITY BROKEM FOR CHECKERBOARD: FIX
 
     '''
-    def __init__(self, grid_corners, nx, ny, node_positions, node_radius, D, dtype='float64'):
+    def __init__(self, grid_corners, nx, ny, layer_sizes, node_positions, node_radius, D, dtype='float64'):
         """
         Initialize a grid.
 
@@ -265,6 +266,7 @@ class NodeSimPython(object):
         self.node_positions = node_positions
         self.node_radius = node_radius
         self.vertex_positions = np.array([self.get_vertex_position(i) for i in range(self.n_vertices)])
+        self.layer_sizes = layer_sizes
 
     def get_vertex_position(self, node_number):
         node_coordinates = (node_number//self.nx, node_number % self.nx)
@@ -282,7 +284,10 @@ class NodeSimPython(object):
 
 
         one_hot_vertices = np.zeros(len(vertices))
-        #print('asdfsdafsadfasdf',node_positions[:, None].shape)
+
+        if node_positions == []:
+            return [], one_hot_vertices
+
         if node_positions[0] is not None:
             node_positions = np.array(node_positions)
             differences = vertices-node_positions[:, None]
@@ -332,24 +337,78 @@ class NodeSimPython(object):
     def threshold_off(self, x):
         return 1 - sigmoid(x-5)
 
+    def bandpass(self, x):
+        return sigmoid(x - 5) -sigmoid(x - 15)
+
+    def inverse_bandpass(self, x):
+        return -sigmoid(x - 5) + sigmoid(x - 15) + 1
+
     def off(self, x):
         return 0*x
 
+    def get_activation_masks(self):
+        #from layre sizes get the activation mask
+        #layer_sizes = [n_IN, [n_ON, n_OFF, n_BP, n_IBP], ..., n_OFF]
+        #activation maskes has same structure but one hot mask of which FD nodes are part of each activation function
+
+        input_verts, self.input_OH = self.assign_vertices(self.node_positions[0])
+        print(self.node_positions[0])
+        print('inputs: ', sum(self.input_OH))
+
+        hidden_OHs = []
+
+        n_hidden_layers = len(self.layer_sizes[1:-1])
+        hidden_layer_sizes = self.layer_sizes[1:-1]
+        hidden_positions = self.node_positions[1:-1]
+
+        print(self.layer_sizes)
+        print(n_hidden_layers)
+        for i in range(n_hidden_layers):
+            layer_size = hidden_layer_sizes[i]
+            n_ON, n_OFF, n_BP, n_IBP = layer_size
+
+            ON_OHs = self.assign_vertices(hidden_positions[i][:n_ON])[1]
+            OFF_OHs = self.assign_vertices(hidden_positions[i][n_ON:n_ON+n_OFF])[1]
+            BP_OHs = self.assign_vertices(hidden_positions[i][n_ON+n_OFF:n_ON+n_OFF+n_BP])[1]
+            IBP_OHs = self.assign_vertices(hidden_positions[i][n_ON+n_OFF+n_BP:])[1]
+
+            layer_OHs = [ON_OHs, OFF_OHs, BP_OHs, IBP_OHs]
+
+            hidden_OHs.append(layer_OHs)
+
+        output_verts, output_OH = self.assign_vertices(self.node_positions[3])
+
+        self.layer_masks = [self.input_OH]
+        self.layer_masks.extend(hidden_OHs)
+        self.layer_masks.append(output_OH)
+
     def get_act(self, u):
-        AHL1 = u[0,:,:]
-        AHL2 = u[1,:,:]
 
-        # layers = [in, h1, h2, out]
+        AHLS = [u[i,:,:] for i in range(len(u))]
 
-        h1_mask, h2_mask, out_mask = self.layer_masks[1:]
 
-        h1_act = self.threshold_on(AHL1).flatten() * h1_mask
-        h2_act = self.threshold_off(AHL1).flatten() * h2_mask
-        out_act = self.threshold_on(AHL2).flatten() * out_mask
-        #print()
-        #print(np.sum(h1_act), np.sum(h2_act), np.sum(out_act))
+        #layer_masks= [n_IN, [n_ON, n_OFF, n_BP, n_IBP], ..., n_OFF]
+        #activations = [in_act, h1_act, ..., out_act]
 
-        return np.array([self.input_OH, h1_act + h2_act, out_act])
+        hidden_masks = self.layer_masks[1:-1]
+
+        hidden_acts = []
+        for i in range(len(hidden_masks)):
+            ON_act = self.threshold_on(AHLS[i]).flatten() * hidden_masks[i][0]
+            OFF_act = self.threshold_off(AHLS[i]).flatten() * hidden_masks[i][1]
+            BP_act = self.bandpass(AHLS[i]).flatten() * hidden_masks[i][2]
+            IBP_act = self.inverse_bandpass(AHLS[i]).flatten() * hidden_masks[i][3]
+
+            hidden_acts.append(ON_act + OFF_act + BP_act + IBP_act)
+
+
+        out_act = self.threshold_on(AHLS[-1]).flatten() * self.layer_masks[-1]
+
+        all_acts = [self.input_OH]
+        all_acts.extend(hidden_acts)
+        all_acts.append(out_act)
+
+        return all_acts
 
     def get_act_one_AHL(self, u):
         AHL1 = u[0,:,:]
@@ -374,20 +433,12 @@ class NodeSimPython(object):
         #
 
         A = self.get_A() # need to scale A by D and dx, dy to change unit
+        self.get_activation_masks()
 
+        n_AHLS = len(self.layer_masks) - 1
 
-        input_verts, self.input_OH = self.assign_vertices(self.node_positions[0])
-
-
-        h1_verts, h1_OH = self.assign_vertices(self.node_positions[1])
-        h2_verts, h2_OH = self.assign_vertices(self.node_positions[2])
-        output_verts, output_OH = self.assign_vertices(self.node_positions[3])
-
-        self.layer_masks = [self.input_OH, h1_OH, h2_OH, output_OH]
-
-        u = np.zeros((2,self.nx,self.ny))
-
-
+        print('nAHLS:', n_AHLS)
+        u = np.zeros((n_AHLs,self.nx,self.ny))
 
         # simulation parameters
         dt = 0.1 * self.dx**2/ D #stable up to 0.2
@@ -409,27 +460,24 @@ class NodeSimPython(object):
         for t in range(t_steps):
             if t%100 == 0:
                 print(t)
-            activated_nodes = self.get_act_one_AHL(u)
+            activated_nodes = self.get_act(u)
             #print(np.sum(activated_nodes))
             all_activated.append(activated_nodes)
 
-            for i in range(1):#2 AHLs
+            for i in range(n_AHLs):#n AHLs
                 du = (A.dot(u[i,:,:].flatten()) + activated_nodes[i] * prod_rate - u[i,:,:].flatten() * deg_rate)
                 #print('du: ',np.sum(du))
                 u[i,:,:] += dt*du.reshape(nx,ny)
             #print(u)
 
-            u = u.reshape(2,nx,ny)
+            u = u.reshape(n_AHLS,nx,ny)
             # apply insulating boundary conditions
-            u[0,0,:] = u[0,1,:]
-            u[0,-1,:] = u[0,-2,:]
-            u[0,:,0] = u[0,:,1]
-            u[0,:,-1] = u[0,:,-2]
 
-            u[1,0,:] = u[1,1,:]
-            u[1,-1,:] = u[1,-2,:]
-            u[1,:,0] = u[1,:,1]
-            u[1,:,-1] = u[1,:,-2]
+            for i in range(n_AHLs):
+                u[i,0,:] = u[i,1,:]
+                u[i,-1,:] = u[i,-2,:]
+                u[i,:,0] = u[i,:,1]
+                u[i,:,-1] = u[i,:,-2]
 
 
             all_us.append(copy.copy(u))
@@ -438,90 +486,100 @@ class NodeSimPython(object):
         return all_us, all_activated
 
 
-tmax = int(3) # hours
 
-nx = ny = 100
-n_AHLs = 2
-D = 3e-6 #cm^2/s
-D = 0.03 #mm^2/min LUCA'S ONE
+if __name__ == '__main__':
+    working_dir = sys.argv[1]
+    tmax = int(1) # hours
 
-D = D/6000 *60**2 #cm^2/h
-node_radius = 0.01
-u0 = np.zeros((n_AHLs, nx, ny))
+    nx = ny = 100
+    n_AHLs = 3
+    D = 3e-6 #cm^2/s
+    D = 0.03 #mm^2/min LUCA'S ONE
 
-node_positions = np.load('network_out/one_AHL/node_positions.npy', allow_pickle = True)
-minimal_model = np.load('network_out/minimal_model.npy', allow_pickle = True)
-print(node_positions)
-print(minimal_model)
-n_h1 = sum(minimal_model[0][:5])
-n_h2 = sum(minimal_model[0][5:])
+    D = D/6000 *60**2 #cm^2/h
+    node_radius = 0.1
+    u0 = np.zeros((n_AHLs, nx, ny))
 
-max_x, max_y = normalise_positions(node_positions)
-print('normalised grid: ', max_x, max_y)
-#grid_corners = np.array([[-0.5,1],[-0.5,1]])
-grid_corners = np.array([[-0.2,0.5],[-0.2,0.5]]) #cm
+    node_positions = np.load(working_dir + '/node_positions.npy', allow_pickle = True)
+    minimal_model = np.load(working_dir + '/minimal_model.npy', allow_pickle = True)
+    layer_sizes = minimal_model[0]
 
-#plot_grid(node_positions, 0, n_h1)
-#plt.show()
+    print(minimal_model)
 
+    max_x, max_y = normalise_positions(node_positions)
+    print('node_positions: ', node_positions)
+    print('normalised grid: ', max_x, max_y)
+    #grid_corners = np.array([[-0.5,1],[-0.5,1]])
+    grid_corners = np.array([[0,2],[0,2]]) #cm
 
-node_positions = [[node_positions[0][0]], node_positions[1][:n_h1], node_positions[1][n_h2:], node_positions[2]]
-
-grid = NodeSimPython(grid_corners, nx, ny, node_positions, node_radius, D)
-
-all_us, all_activated = grid.simulate()
-
-#print(all_us.shape, all_activated.shape)
-frame_skip = 200
-plot_one_AHL()
-plt.close('all')
+    #plot_grid(node_positions, 0, n_h1)
+    #plt.show()
 
 
-X = np.arange(nx)
-Y = np.arange(ny)
-X, Y = np.meshgrid(X, Y)
-x, y= X.ravel(), Y.ravel()
+
+    grid = NodeSimPython(grid_corners, nx, ny, layer_sizes, node_positions, node_radius, D)
+
+    all_us, all_activated = grid.simulate()
+
+    #print(all_us.shape, all_activated.shape)
+    frame_skip = 2
+    plot()
+    plt.close('all')
 
 
-fig = plt.figure()
+    X = np.arange(nx)
+    Y = np.arange(ny)
+    X, Y = np.meshgrid(X, Y)
+    x, y= X.ravel(), Y.ravel()
 
-#print(i)
-ax = fig.gca(projection = '3d')
-#plot = ax.bar3d(x, y, us[i], 0, 1, 1, shade=True, color = 'b')
-#ax.set_zlim(0,5)
-plot = ax.plot_surface(X, Y, all_us[-1, 0, :, :].reshape(nx, ny), rstride=1, cstride=1, cmap=cm.coolwarm,linewidth=0, antialiased=False)
-#plot = plt.imshow(us[i].reshape(N, N), cmap='plasma')
-#plot = plt.pcolormesh(X, Y, us[i].reshape(N, N), cmap='plasma')
-#anim.save('network_out/AHL_1.mp4', writer = writer)
-plt.savefig('AHL.png')
-fig = plt.figure()
 
-ax = fig.gca(projection = '3d')
-#plot = ax.bar3d(x, y, us[i], 0, 1, 1, shade=True, color = 'b')
-#ax.set_zlim(0,5)
-plot = ax.plot_surface(X, Y, all_us[-1, 1, :, :].reshape(nx, ny), rstride=1, cstride=1, cmap=cm.coolwarm,linewidth=0, antialiased=False)
-#plot = plt.imshow(us[i].reshape(N, N), cmap='plasma')
-#plot = plt.pcolormesh(X, Y, us[i].reshape(N, N), cmap='plasma')
+    fig = plt.figure()
 
-#anim.save('network_out/AHL_2.mp4', writer = writer)
-plt.show()
-'''
-def inverse_r(x, a, b):
-    return a/(x**b)
+    #print(i)
+    ax = fig.gca(projection = '3d')
+    #plot = ax.bar3d(x, y, us[i], 0, 1, 1, shade=True, color = 'b')
+    #ax.set_zlim(0,5)
+    plot = ax.plot_surface(X, Y, all_us[-1, 0, :, :].reshape(nx, ny), rstride=1, cstride=1, cmap=cm.coolwarm,linewidth=0, antialiased=False)
+    #plot = plt.imshow(us[i].reshape(N, N), cmap='plasma')
+    #plot = plt.pcolormesh(X, Y, us[i].reshape(N, N), cmap='plasma')
+    #anim.save('network_out/AHL_1.mp4', writer = writer)
+    plt.savefig('AHL.png')
+    fig = plt.figure()
 
-func_to_fit = np.load('diffusion_curve.npy')
-#func_to_fit = all_us[-1, 0, 49,55:]
-#np.save('diffusion_curve.npy', func_to_fit)
+    ax = fig.gca(projection = '3d')
+    #plot = ax.bar3d(x, y, us[i], 0, 1, 1, shade=True, color = 'b')
+    #ax.set_zlim(0,5)
+    plot = ax.plot_surface(X, Y, all_us[-1, 1, :, :].reshape(nx, ny), rstride=1, cstride=1, cmap=cm.coolwarm,linewidth=0, antialiased=False)
 
-x = np.array(range(1,46,1))*grid.dx
+    fig = plt.figure()
 
-params, params_covariance = optimize.curve_fit(inverse_r, x, func_to_fit, p0=[350,0.3])
-print(params)
+    ax = fig.gca(projection='3d')
+    # plot = ax.bar3d(x, y, us[i], 0, 1, 1, shade=True, color = 'b')
+    # ax.set_zlim(0,5)
+    plot = ax.plot_surface(X, Y, all_us[-1, 2, :, :].reshape(nx, ny), rstride=1, cstride=1, cmap=cm.coolwarm,
+                           linewidth=0, antialiased=False)
+    #plot = plt.imshow(us[i].reshape(N, N), cmap='plasma')
+    #plot = plt.pcolormesh(X, Y, us[i].reshape(N, N), cmap='plasma')
 
-plt.figure()
-plt.plot(x, func_to_fit, label = 'diffusion curve')
-plt.plot(x,inverse_r(x, 47, 2), label = '1/r')
-plt.legend()
-
-plt.show()
-'''
+    #anim.save('network_out/AHL_2.mp4', writer = writer)
+    plt.show()
+    '''
+    def inverse_r(x, a, b):
+        return a/(x**b)
+    
+    func_to_fit = np.load('diffusion_curve.npy')
+    #func_to_fit = all_us[-1, 0, 49,55:]
+    #np.save('diffusion_curve.npy', func_to_fit)
+    
+    x = np.array(range(1,46,1))*grid.dx
+    
+    params, params_covariance = optimize.curve_fit(inverse_r, x, func_to_fit, p0=[350,0.3])
+    print(params)
+    
+    plt.figure()
+    plt.plot(x, func_to_fit, label = 'diffusion curve')
+    plt.plot(x,inverse_r(x, 47, 2), label = '1/r')
+    plt.legend()
+    
+    plt.show()
+    '''

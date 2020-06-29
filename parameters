@@ -1,5 +1,5 @@
 diffusion coefficient of ahl in water = 4.9*10^{-10} m^2/s, fitted value for diffusion coeff in agar = 3 * 10^{-10} m^2/s  https://onlinelibrary.wiley.com/doi/full/10.1111/1574-6968.12394
-diffusion coefficient for ahl in agar: 5*10**(-10), https://www.biorxiv.org/content/biorxiv/early/2017/11/18/220244.full.pdf
+diffusion coefficient for ahl in agar: 5*10**(-10) m^2/s = 3*10^-2 mm^2/min = 1.8 mm^2/h, https://www.biorxiv.org/content/biorxiv/early/2017/11/18/220244.full.pdf
 half life of AHL in absence of bacteria at PH 7 = 7 days  https://onlinelibrary.wiley.com/doi/full/10.1111/1574-6968.12394
 
 AHL decay 0.01 min^(-1) A synthetic multicellular system for programmed pattern formation
@@ -10,3 +10,4 @@ AHL half life: seven days: https://watermark.silverchair.com/352-2-198.pdf?token
 
 
 AHL model: http://2015.igem.org/Team:ETH_Zurich/Modeling/AHL_Module#Single_Cell_Model
+

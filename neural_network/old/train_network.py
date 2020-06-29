@@ -3,6 +3,9 @@ import os
 from typing import Any, Union
 
 import numpy as np
+import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+
 import tensorflow as tf
 import math
 import random
@@ -26,6 +29,7 @@ from tensorflow.keras import models
 from numpy.random import random
 from tensorflow.keras.optimizers import Adam
 from tensorflow_model_optimization.sparsity import keras as sparsity
+from time import time
 
 tf.reset_default_graph()
 
@@ -64,6 +68,9 @@ def create_network(layer_sizes, weights = None):
     # maxval = 20 for everything before tensorflow pruning
     init = keras.initializers.RandomUniform(minval=0, maxval=20, seed=None) # extremem but it helps as gradients low near 0 for the custom activation runctions
 
+    t_total = 0
+
+
     prev_layer = inputs
     for i, hidden_layer in enumerate(hidden_layers):
         n_ON, n_OFF, n_BP, n_IBP = hidden_layer
@@ -83,6 +90,7 @@ def create_network(layer_sizes, weights = None):
         h_IBP = Dense(n_IBP, activation=Activation(inverse_bandpass), kernel_initializer = init, kernel_regularizer = regularizers.l1(0.005), kernel_constraint=cs.NonNeg(), use_bias = False)
         h_IBP_act = h_IBP(prev_layer)
 
+        t = time()
         if weights is not None:
 
             h_ON.set_weights([weights[i][:, 0:n_ON]])
@@ -90,9 +98,9 @@ def create_network(layer_sizes, weights = None):
             h_BP.set_weights([weights[i][:, n_ON + n_OFF: n_ON + n_OFF + n_BP]])
             h_IBP.set_weights([weights[i][:, n_ON + n_OFF + n_BP:]])
 
-
+        t1 = time() - t
         h = tf.concat([h_ON_act, h_OFF_act,h_BP_act,h_IBP_act], axis = 1)
-
+        t_total += t1
         prev_layer = h
 
     #outputs = Dense(n_output_nodes,activation = Activation(threshold_on),  name = "outputs", kernel_regularizer = regularizers.l1(0.01), kernel_constraint=cs.NonNeg())(h)
@@ -105,7 +113,6 @@ def create_network(layer_sizes, weights = None):
     if weights is not None:
         outputs.set_weights([weights[-1]])
 
-
     model = tf.keras.Model(inputs = inputs, outputs = outputs_act)
     # make model prunable
     #model = sparsity.prune_low_magnitude(model, **pruning_params)
@@ -113,9 +120,7 @@ def create_network(layer_sizes, weights = None):
     model.compile(loss = 'mean_squared_error', optimizer = 'adam', metrics = ['accuracy'])
 
     layer_inputs = [layer.output for layer in model.layers][5:]
-    print(model.layers[:6])
-    print()
-    print(model.layers[6:])
+
 
     input_model = models.Model(inputs=model.input, outputs=layer_inputs)
     return model, input_model

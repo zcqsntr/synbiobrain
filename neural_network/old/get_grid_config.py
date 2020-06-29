@@ -217,7 +217,7 @@ def get_node_positions(minimal_model, n_gens, initial_pop):
             best_grid = copy.deepcopy(grids[indices[-1]])
             best_fitness = fitnesses[indices[-1]]
 
-        reproduce = indices[-5000:] # because fitness negative
+        reproduce = indices[-initial_pop/2:] # because fitness negative
         print(fitnesses[indices[-1]])
 
 

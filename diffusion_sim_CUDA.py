@@ -133,8 +133,7 @@ class SynBioBrainCUDA(object):
 
     def get_barrier_vertices(self, vertices, grid_corners, node_dim, nx, ny):
         '''
-        assigns mesh vertices to be part of input or output nodes and returns the
-        number of vertices inside each node
+        assigns mesh vertices to be part of barriers in between nodes with differing diffusion coeff.
         '''
         vertices = np.array(vertices)[:,:2]
         grid_width = grid_corners[0][1] - grid_corners[0][0]
@@ -768,7 +767,7 @@ class SynBioBrainCUDA(object):
             overall_Us, overall_activated = self.run_sim(arrays, buffers, programs, n_loops, n_timesteps, params)
             return overall_Us, overall_activated
 
-
+'''I think this class is redundant'''
 class NodeSimCUDA(object):
     '''
     MASK FUNCTIONALITY BROKEM FOR CHECKERBOARD: FIX

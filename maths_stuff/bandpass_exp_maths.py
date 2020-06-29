@@ -2,7 +2,7 @@ import math
 import numpy as np
 from scipy.stats import norm
 from scipy.integrate import quad
-
+from scipy.integrate import dblquad
 
 V_AHL = 15 * 10**(-6) #L
 C_AHL = 0.01 * 10**(-3) #M
@@ -16,11 +16,21 @@ print(t)
 
 
 
-def p_density(x):
-    return 2*1/((4*np.pi * D * t)**(1/2)) * np.exp(-x**2/(4*D*t)) # mulpily by two for each side of the curve
+def p_density(x, N0 = 1):
+    return N0/(4*np.pi * D * t) * np.exp(-x**2/(4*D*t)) # mulpily by two for each side of the curve
+
+
+def p_density(x, t_prime, N0 = 1):
+    return N0/(4*np.pi * D * (t- t_prime)) * np.exp(-x**2/(4*D*(t-t_prime))) # mulpily by two for each side of the curve
+
 
 def integrate_p_density(x0, x1):
     prob, err = quad(p_density, x0, x1)
+    print(err)
+    return prob
+
+def integrate_p_density(x0, x1, t0, t1):
+    prob, err = dblquad(p_density, t0, t1, x0, x1)
     print(err)
     return prob
 
@@ -39,18 +49,5 @@ def get_conc_uM(x0, x1):
     return mol_per_m3 * 1000
 
 
-
-
-
-
-
-
-
-
-print('Concentration of AHL in first half cm: (uM)', get_conc_uM(0.0, 0.005))
-print('Concentration of AHL in last half cm: (uM)', get_conc_uM(0.04, 0.045))
-print('Concentration of AHL that kills cells: (uM)', get_conc_uM(0.0249, 0.0251))
-
-
-
-print('Concentration of AHL in first half cm: (uM)', get_conc_uM(0.0, 0.005))
+t = 10
+print('asdfsdaf', integrate_p_density(0, 999999, 0, 10))

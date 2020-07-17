@@ -5,6 +5,7 @@ from functools import total_ordering
 import math
 import matplotlib.pyplot as plt
 import sys
+import pickle
 
 from time import time
 
@@ -17,15 +18,19 @@ from time import time
 
 # rank nodes best of accuracy and recombine from the population of the good nodes
 def hill(conc, n, kd, min, max):
+    conc -=10
+    conc[conc<0] = 0
     return min + (max-min)*(conc**n/(kd**n + conc**n))
 
 
 def sigmoid(x):
   return 1 / (1 + np.exp(-x))
 
+S = 3.8e-3  # nmol/h
+C = 3e-6
 
 def threshold_on(x):
-    return sigmoid(x - 5)
+    return sigmoid(x/S - 5)*S
 
 def threshold_on(x):
     #x: nmol/mm^2
@@ -35,12 +40,12 @@ def threshold_on(x):
     max = 54096
     S = 3.8e-3  # nmol/h
     C = 3e-6  # converesion from nM to nmol/mm^2
-    min = 0
-    return hill(x/C, n, kd, min, max)/max *S
+    #min = 0
+    return (hill(x/C, n, kd, min, max)/max)*S
 
 
 def threshold_off(x):
-    return 1 - sigmoid(x - 5)
+    return (1 - sigmoid(x/S - 5))*S
 
 
 def threshold_off(x):
@@ -51,7 +56,7 @@ def threshold_off(x):
     max = 54096
     S = 3.8e-3  # nmol/h
     C = 3e-6  # converesion from nM to nmol/mm^2
-    min = 0
+    #min = 0
     return (1 - hill(x/C, n, kd, min, max)/max)*S
 
 
@@ -180,15 +185,15 @@ class Grid:
         #self.prod_rate = 0.5
         self.size = np.array(size) #(max_x, max_y)
         self.node_radius = node_radius
-        self.layer_sizes = layer_sizes
+
         #set up nodes
         self.nodes = []
-        input = layer_sizes[0]
-        output = layer_sizes[-1]
+        self.input = layer_sizes[0]
+        self.output = layer_sizes[-1]
         hidden_layers = layer_sizes[1:-1]
         self.diffusion_data = np.load('./mathematica_data.npy')
 
-        self.nodes.append([Node('ON', np.random.rand(2) * self.size) for i in range(input)])
+        self.nodes.append([Node('ON', np.random.rand(2) * self.size) for i in range(self.input)])
         for l in hidden_layers:
             h_l = []
             h_l.extend([Node('ON', np.random.rand(2) * self.size) for i in range(l[0])])
@@ -197,7 +202,27 @@ class Grid:
             h_l.extend([Node('IBP', np.random.rand(2) * self.size) for i in range(l[3])])
             self.nodes.append(h_l)
 
-        self.nodes.append([Node('ON', np.random.rand(2) * self.size) for i in range(output)])
+        self.nodes.append([Node('ON', np.random.rand(2) * self.size) for i in range(self.output)])
+
+    @property
+    def layer_sizes(self):
+
+
+        layer_sizes = []
+        layer_sizes.append(self.input)
+
+        for i in range(1, len(self.nodes) - 1):  # for each hidden layer
+
+            ls = [0,0,0,0]
+            for j in range(len(self.nodes[i])):
+                type_index = ['ON', 'OFF', 'BP', 'IBP'].index(self.nodes[i][j].activation)
+                ls[type_index] += 1
+            layer_sizes.append(ls)
+
+
+        layer_sizes.append(self.output)
+        return layer_sizes
+
 
     def get_distance(self,p1, p2):
         return np.sqrt((p1[0] - p2[0]) ** 2 + (p1[1] - p2[1]) ** 2)
@@ -211,7 +236,7 @@ class Grid:
         if min==max: return min
         grad = (max-min)/(math.ceil(r) - math.floor(r))
 
-        return min + grad*(r - math.floor(r))
+        return (min + grad*(r - math.floor(r)))#*200
 
     def get_nodes(self):
         return self.nodes
@@ -247,46 +272,45 @@ class Grid:
 
     def mutate(self):
 
+
+        need_move = False
         for i in range(len(self.get_nodes())):
-            for j in range(len(self.get_nodes()[i])):  # randomly mutate the position of each node
+            for j in range(len(self.get_nodes()[i])):
 
 
                 # randomly change node type
-                if np.random.rand() < 0.1 and 1 < i < len(self.get_nodes()) - 1: # onyl for hidden layers
+                '''
+                if np.random.rand() < 0.1 and 1 < i < len(self.get_nodes()) - 11: # onyl for hidden layers
                     # node_type = np.random.choice(['ON', 'OFF', 'BP', 'IBP'])
+
                     type_index = ['ON', 'OFF', 'BP', 'IBP'].index(self.nodes[i][j].activation)
-                    self.layer_sizes[i][type_index] -= 1
 
 
                     node_type = np.random.choice(['ON', 'OFF'])
                     self.nodes[i][j].set_activation(node_type)
 
                     type_index = ['ON', 'OFF', 'BP', 'IBP'].index(node_type)
-                    self.layer_sizes[i][type_index] += 1
+                '''
 
-
-
-
+                # randomly mutate the position of each node
                 if np.random.rand() < 0.2:
                     rand_x = (np.random.rand() - 0.5)*5
                     if 0 < self.nodes[i][j].position[0] + rand_x < 30:
                         self.nodes[i][j].position[0] += rand_x
+                        need_move = True
 
                 if np.random.rand() < 0.2:
                     rand_y = (np.random.rand() - 0.5)*5
                     if 0 < self.nodes[i][j].position[1] + rand_y < 30:
                         self.nodes[i][j].position[1] += rand_y
-
+                        need_move = True
+            '''
             # randomly remove or add nodes
-            if np.random.rand()< 0.1 and 1 < i < len(self.get_nodes()) - 1: # onyl for hidden layers
+            if np.random.rand()< 0.1 and 1 < i < len(self.get_nodes()) - 1 and len(self.get_nodes()[i]) > 1: # onyl for hidden layers
 
-                if len(self.get_nodes()[i]) > 0:
-                    node = self.nodes[i].pop(np.random.choice(range(len(self.get_nodes()[i]))))
 
-                    # update layer sizes
-                    type_index = ['ON', 'OFF', 'BP', 'IBP'].index(node.activation)
+                self.nodes[i].pop(np.random.choice(range(len(self.get_nodes()[i]))))
 
-                    self.layer_sizes[i][type_index] -= 1
 
             if np.random.rand()< 0.1 and 0 < i < len(self.get_nodes()) - 1: # onyl for hidden layers
 
@@ -298,9 +322,10 @@ class Grid:
 
                 # update layer sizes
                 type_index = ['ON', 'OFF', 'BP', 'IBP'].index(node_type)
+                need_move = True
+            '''
+            if need_move: self.move_concurrent_nodes()
 
-                self.layer_sizes[i][type_index] += 1
-                self.move_concurrent_nodes()
 
 
     def pol2cart(self, rho, phi):
@@ -330,8 +355,13 @@ class Grid:
                                 unit_vec = dir / mag  # direction to move node
 
                                 translation_mag = (self.node_radius * 2 - mag)
-                                self.nodes[i][j].position += unit_vec[0] * translation_mag
-                                self.nodes[i][j].position += unit_vec[1] * translation_mag
+
+                                if self.nodes[i][j].position[0] + unit_vec[0] * translation_mag < 30 and self.nodes[i][j].position[1] + unit_vec[1] * translation_mag<30:
+                                    self.nodes[i][j].position += unit_vec * translation_mag
+
+                                else:
+                                    self.nodes[i][j].position -= unit_vec * translation_mag
+
 
     def get_weights(self):
 
@@ -371,11 +401,12 @@ class Grid:
 
         mse = self.get_mse(predicted, targets)
         accuracy = self.get_accuracy(predicted, targets)
-        return mse/accuracy # this could also include terms for number of nodes or size of max layer etc
+        return mse#/(accuracy +0.00001) # this could also include terms for number of nodes or size of max layer etc
 
     def get_mse(self, predicted, targets):
-
-        mse = np.sum((predicted.reshape(-1,) - targets)**2/len(targets))
+        if not predicted.shape == targets.shape == (predicted - targets).shape:
+            print('GET MSE BROKEN!!!!!!!')
+        mse = np.sum((predicted - targets)**2)/len(targets)
 
         return mse
 
@@ -433,6 +464,7 @@ class Grid:
         output_layer = self.layer_sizes[-1]
 
         weights = self.get_weights()
+
         #print(weights)
         current_layer = inputs
         for i in range(len(hidden_layers)):
@@ -490,9 +522,11 @@ class GridPopulation:
 
                     l_s[j] = activations
 
+
+
             self.population.append(Grid(grid_size, l_s, node_radius))
 
-        [grid.move_concurrent_nodes() for grid in self.population]
+        #[grid.move_concurrent_nodes() for grid in self.population]
         self.n_grids = n_grids
 
     def remainder_stochastic_sampling(self, fitnesses):
@@ -544,7 +578,7 @@ class GridPopulation:
                 children.append(child1)
                 children.append(child2)
 
-            if np.random.rand() < 0.5:  # this grid is going to mutate
+            if np.random.rand() < 0.1:  # this grid is going to mutate
                 good_grids[i].mutate()
 
         #good_grids.extend(children) # for nbaive selection
@@ -615,12 +649,16 @@ class GridPopulation:
                 plt.savefig(working_dir + '/learned_func' + str(gen) + '.png')
 
 
+            t = time()
             good_grids = self.remainder_stochastic_sampling(fitnesses)
-            good_grids = self.mutation_recombination(good_grids)
+            print('selection time: ', time()-t)
 
+            t = time()
+            good_grids = self.mutation_recombination(good_grids)
+            print('mut-rec time: ', time() - t)
 
             good_grids.append(best_grid)  # keep best grid
-            [grid.move_concurrent_nodes() for grid in good_grids]
+            #[grid.move_concurrent_nodes() for grid in good_grids]
 
 
             self.population = good_grids
@@ -632,23 +670,23 @@ if __name__ == '__main__':
     working_dir = sys.argv[1]
 
     #node_radius  = 0.01 #cm used for one layer XNOR
-    node_radius = 0.5
-    n_gens = 200
-    initial_pop = 10000
+    node_radius = 0.1
+    n_gens = 1
+    initial_pop = 10
     grid_size = [10,10]
 
 
-    training_func = lambda n : generate_logic_func(n, [1,0,0,1]) #XNOR
+    training_func = lambda n : generate_logic_func(n, [1,0,0,1], mode = 'cont') #XNOR
     #training_func = generate_circle
     #training_func = sin
-    layer_sizes = [2, 4,  1]  # can either specify in [2,4,4,1] or 2, [1,2,0,1], [2,0,2,0], 1 form
-    #layer_sizes = [1, [0,3,0,0], [0,0,2,0], 1]
+    #layer_sizes = [2, 10, 10, 1]  # can either specify in [2,4,4,1] or 2, [1,2,0,1], [2,0,2,0], 1 form
+    layer_sizes = [2, [1,1,0,0], 1]
     t = time()
     grid_population = GridPopulation(grid_size, initial_pop, layer_sizes, node_radius)
     prod_rate = grid_population.population[0].prod_rate
     max_weight = grid_population.population[0].AHL_func(node_radius*2)
     print('max weight: ',max_weight)
-    print('proportional activation at max weight: ', threshold_on(prod_rate*max_weight)/prod_rate)
+    #print('proportional activation at max weight: ', threshold_on(prod_rate*max_weight)/prod_rate)
     print('time to init: ', time() - t)
 
     best_grid, fitness = grid_population.evolve_population(training_func, n_gens)
@@ -656,7 +694,13 @@ if __name__ == '__main__':
 
     inputs, targets = training_func(1000)
     print('best grid accuracy: ', best_grid.get_accuracy(best_grid.predict(inputs), targets))
-    np.save(working_dir + '/best_grid.npy', best_grid)
+    f = open(working_dir + '/best_grid.pkl', 'wb')
+    print('saved weights: ', best_grid.get_weights())
+    pickle.dump(best_grid, f, pickle.HIGHEST_PROTOCOL)
+    f.close()
+    f = open(working_dir + '/best_grid.pkl', 'rb')
+    grid = pickle.load(f)
+    print('loaded weights: ', grid.get_weights())
 
     best_grid.plot('final', working_dir)
 

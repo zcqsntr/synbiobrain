@@ -50,8 +50,9 @@ inverse_bandpass_acts = []
 
 for k in range(3):
     AHL = np.load('/home/neythen/Desktop/Projects/synbiobrain/maths_stuff/verify_comb_maths_results/' + str(i) + ',' + str(j) + ': ' + str(k) + '.npy')
-    '''
+
     print(AHL.shape)
+    '''
     print('max: ', np.max(AHL))
     print('min: ', np.min(AHL))
     print('mean: ', np.mean(AHL))
@@ -59,6 +60,9 @@ for k in range(3):
     print()
     '''
     threshold_act = get_activation_map(AHL[-1, :], lambda x: threshold(x, t))
+
+
+
     inverse_threshold_act = get_activation_map(AHL[-1, :], lambda x: inverse_threshold(x, t))
     bandpass_act = get_activation_map(AHL[-1, :], lambda x: bandpass(x, t1, t2))
     inverse_bandpass_act = get_activation_map(AHL[-1, :], lambda x: inverse_bandpass(x, t1, t2))

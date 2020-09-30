@@ -44,8 +44,8 @@ except:
 
 #one_hot_out[4354] = 1
 
-#production_rate = 0.000001
-production_rate = 0.00000001
+production_rate = 0.00001
+#production_rate = 0.00000001
 ps = [10**(-1.9),10**(-0.6) ,10**(-1.9), 10**(-0.6)] # thresholds in micro molar
 #ps = [10**(-1.9),10**(-0.6) ,10**(-2), 10]
 print(ps)
@@ -54,7 +54,7 @@ delta_t = 100
 delta_t = (grid.dx)**2/(2*D) * 0.5 # maximum stable timestep with 50% safety
 print('delta_t (seconds): ', delta_t)
 
-simulation_time = 10 #number of real hours to simulate
+simulation_time = 40 #number of real hours to simulate
 
 total_timesteps = int(simulation_time*60*60/delta_t)
 print('total_timesteps: ', total_timesteps)
@@ -97,93 +97,96 @@ all_node_positions = grid.get_node_positions(node_dim, grid_corners)
 vertices, one_hot_vertices = grid.assign_vertices(grid.vertex_positions, np.transpose(all_node_positions[4]).reshape(1,2), node_radius)
 
 #heated_element[vertices] = 90
-
+'''
 for i in range(25):
     for j in range(25):
         print('----------------------------------------------------------------', i,j)
         if not i == j:
-            i = 6
-            j = 18
-            for k, input_indeces in enumerate([np.array([i]), np.array([j]), np.array([i, j])]):
+'''
 
-                with Timer() as t:
+i = 6
+j = 18
+for k, input_indeces in enumerate([np.array([i]), np.array([j]), np.array([i, j])]):
 
-                    overall_Us, overall_activated = grid.synbio_brain(heated_element, grid_corners, node_dim, input_indeces, output_indeces, params)
-                    print('max: ',np.max( overall_Us))
-                    print('mean: ',np.mean( overall_Us))
+    with Timer() as t:
 
-                np.save(str(i) + ',' + str(j) + ': ' + str(k) + '.npy', np.array(overall_Us[::10]))
-                    #for 300x300 grid
-
-
-                print(np.all(overall_Us[-1] == overall_Us[-2]))
-                #plt.plot([overall_Us[i][49063] for i in range(len(overall_Us))])
-                #plt.show()
-
-                print('X: ', X.shape)
-                print('nx: ', grid.nx)
-                fast_time = t.interval
-                print('real time taken (seconds) : ', fast_time)
-                bounds = np.linspace(0, 2, 5)
-                norm = colors.BoundaryNorm(boundaries=bounds, ncolors=256)
+        overall_Us, overall_activated = grid.synbio_brain(heated_element, grid_corners, node_dim, input_indeces, output_indeces, params)
+        print('max: ',np.max( overall_Us))
+        print('mean: ',np.mean( overall_Us))
+    print('overall us: ', overall_Us.shape)
+    print(np.array(overall_Us[::10]).shape)
+    np.save('./timescale/' + str(i) + ',' + str(j) + ': ' + str(k) + '.npy', np.array(overall_Us[::10]))
+        #for 300x300 grid
 
 
-                fig = plt.figure()
-                ax = fig.gca(projection = '3d')
-                ax.view_init(elev = 0,azim=0)
-                ax.set_xlabel('X position (cm)')
-                ax.set_ylabel('[AHL]')
-                plot = ax.plot_trisurf(grid.vertex_positions[:,0], grid.vertex_positions[:,1], overall_Us[-1], shade=False, cmap=cm.coolwarm, linewidth=0)
-                #plot = plt.imshow(overall_Us[-1].reshape(grid.nx, grid.ny), cmap='plasma')
-                np.save("output/AHL_ts.npy", overall_Us)
+    print(np.all(overall_Us[-1] == overall_Us[-2]))
+    #plt.plot([overall_Us[i][49063] for i in range(len(overall_Us))])
+    #plt.show()
 
-                plt.show()
-
-
-                # plot the anmations
-                pdf = matplotlib.backends.backend_pdf.PdfPages("output/AHL.pdf")
-                fig = plt.figure()
-                ims = []
-                for i in range(0,len(overall_Us), frame_skip):
-                    print(i)
-                    #ax = fig.gca(projection = '3d')
-                    #plot = ax.bar3d(x, y, bottom, width, depth, Us[i], shade=True, color = 'b')
-                    fig.suptitle('time: ' + str(delta_t*i))
-                    #plot = ax.plot_surface(X, Y, Us[i].reshape(grid.nx, grid.ny), rstride=1, cstride=1, cmap=cm.coolwarm,
-                    #    linewidth=0, antialiased=False)
-                    plot = plt.imshow(overall_Us[i].reshape(grid.nx, grid.ny), cmap='plasma', vmin = 0)
-
-                    ims.append([plot])
-                    pdf.savefig(fig)
+    print('X: ', X.shape)
+    print('nx: ', grid.nx)
+    fast_time = t.interval
+    print('real time taken (seconds) : ', fast_time)
+    bounds = np.linspace(0, 2, 5)
+    norm = colors.BoundaryNorm(boundaries=bounds, ncolors=256)
 
 
+    fig = plt.figure()
+    ax = fig.gca(projection = '3d')
+    ax.view_init(elev = 0,azim=0)
+    ax.set_xlabel('X position (cm)')
+    ax.set_ylabel('[AHL]')
+    plot = ax.plot_trisurf(grid.vertex_positions[:,0], grid.vertex_positions[:,1], overall_Us[-1], shade=False, cmap=cm.coolwarm, linewidth=0)
+    #plot = plt.imshow(overall_Us[-1].reshape(grid.nx, grid.ny), cmap='plasma')
+    np.save("./timescale/AHL_ts.npy", overall_Us)
 
-                anim = animation.ArtistAnimation(fig, ims, interval = 200, blit = True, repeat_delay = 100)
-
-                pdf.close()
-                plt.title('AHL_conc')
-                plt.show()
-
-                plt.close()
-                pdf = matplotlib.backends.backend_pdf.PdfPages("output/GFP.pdf")
-                fig = plt.figure()
-                ims = []
-                cmap = mpl.colors.ListedColormap(['g', 'k'])
-                bounds = [0., 0.5, 1.]
-                norm = mpl.colors.BoundaryNorm(bounds, cmap.N)
-
-                for i in range(0,len(overall_activated), frame_skip):
-                    print(i)
-                    fig.suptitle('time: ' + str(delta_t*i))
+    plt.show()
 
 
-                    plot = plt.imshow(overall_activated[i].reshape(grid.nx, grid.ny), cmap = 'inferno')
+    # plot the anmations
+    pdf = matplotlib.backends.backend_pdf.PdfPages("./timescale/AHL.pdf")
+    fig = plt.figure()
+    ims = []
+    for i in range(0,len(overall_Us), frame_skip):
+        print(i)
+        #ax = fig.gca(projection = '3d')
+        #plot = ax.bar3d(x, y, bottom, width, depth, Us[i], shade=True, color = 'b')
+        fig.suptitle('time: ' + str(delta_t*i))
+        #plot = ax.plot_surface(X, Y, Us[i].reshape(grid.nx, grid.ny), rstride=1, cstride=1, cmap=cm.coolwarm,
+        #    linewidth=0, antialiased=False)
+        plot = plt.imshow(overall_Us[i].reshape(grid.nx, grid.ny), cmap='plasma', vmin = 0)
 
-                    ims.append([plot])
-                    pdf.savefig(fig)
+        ims.append([plot])
+        pdf.savefig(fig)
 
-                anim = animation.ArtistAnimation(fig, ims, interval = 200, blit = True, repeat_delay = 100)
-                plt.show()
-                pdf.close()
 
-                np.save("output/GFP_ts.npy", overall_activated)
+
+    anim = animation.ArtistAnimation(fig, ims, interval = 200, blit = True, repeat_delay = 100)
+
+    pdf.close()
+    plt.title('AHL_conc')
+    plt.show()
+
+    plt.close()
+    pdf = matplotlib.backends.backend_pdf.PdfPages("./timescale/GFP.pdf")
+    fig = plt.figure()
+    ims = []
+    cmap = mpl.colors.ListedColormap(['g', 'k'])
+    bounds = [0., 0.5, 1.]
+    norm = mpl.colors.BoundaryNorm(bounds, cmap.N)
+
+    for i in range(0,len(overall_activated), frame_skip):
+        print(i)
+        fig.suptitle('time: ' + str(delta_t*i))
+
+
+        plot = plt.imshow(overall_activated[i].reshape(grid.nx, grid.ny), cmap = 'inferno')
+
+        ims.append([plot])
+        pdf.savefig(fig)
+
+    anim = animation.ArtistAnimation(fig, ims, interval = 200, blit = True, repeat_delay = 100)
+    plt.show()
+    pdf.close()
+
+    np.save("./timescale/GFP_ts.npy", overall_activated)

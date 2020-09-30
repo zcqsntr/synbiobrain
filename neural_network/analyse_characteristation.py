@@ -57,13 +57,6 @@ if __name__ == '__main__':
     print(len(AHL_conc))
     print(AFUs)
 
-
-
-
-
-
-
-
     #reciever activation against known AHL
 
     AHL_conc = np.array(AHL_conc)
@@ -118,6 +111,7 @@ if __name__ == '__main__':
 
     times = np.array(times)
     distances = np.array(distances)
+    print('distances: ', distances)
 
     results_dict ={}
     for i in range(len(times)):

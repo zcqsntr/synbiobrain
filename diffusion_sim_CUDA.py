@@ -675,6 +675,7 @@ class SynBioBrainCUDA(object):
             all_ub, current_ub, maskb, Aub, psb, node_times_onb, node_times_offb, all_activatedb, activatedb, boundary_nodesb, non_boundary_nodesb, boundary_flagsb, one_hot_inb, one_hot_outb, one_hot_barrierb = buffers
             buffers = all_ub, current_ub, maskb, Aub, psb, node_times_onb, node_times_offb, all_activatedb, activatedb, boundary_nodesb, non_boundary_nodesb, boundary_flagsb, one_hot_inb, one_hot_outb, one_hot_barrierb
 
+        print('inputs: ', np.sum(one_hot_in))
         overall_activated = []
         overall_Us = []
         overall_Us2 = []

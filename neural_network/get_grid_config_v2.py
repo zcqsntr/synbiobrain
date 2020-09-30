@@ -40,7 +40,7 @@ def threshold_on(x):
     max = 54096
     S = 3.8e-3  # nmol/h
     C = 3e-6  # converesion from nM to nmol/mm^2
-    #min = 0
+    min = 0
     return (hill(x/C, n, kd, min, max)/max)*S
 
 
@@ -56,7 +56,7 @@ def threshold_off(x):
     max = 54096
     S = 3.8e-3  # nmol/h
     C = 3e-6  # converesion from nM to nmol/mm^2
-    #min = 0
+    min = 0
     return (1 - hill(x/C, n, kd, min, max)/max)*S
 
 
@@ -671,8 +671,8 @@ if __name__ == '__main__':
 
     #node_radius  = 0.01 #cm used for one layer XNOR
     node_radius = 0.1
-    n_gens = 1
-    initial_pop = 10
+    n_gens = 100
+    initial_pop = 1000
     grid_size = [10,10]
 
 

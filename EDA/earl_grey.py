@@ -24,7 +24,7 @@ def get_blocks(truth_table):
 
 def check_constraints(lower, upper):
     #checks whther putting lower and upper in this order is valid
-    return np.sum(lower*upper) != np.sum(upper)
+    return np.sum(lower*upper) < np.sum(upper)
 
 def hash_table(truth_table):
     #hashes truth table into a unique string so we can keep track of which ones have been visited
@@ -35,7 +35,7 @@ def hash_table(truth_table):
     return hashed
 
 
-def simplify(state_mapping):
+def simplify(state_mapping, n_inputs):
     redenduant_inputs = []
     has_factored = False
 
@@ -75,200 +75,220 @@ def simplify(state_mapping):
 
     return new_state_mapping
 
+def earl_grey(truth_table, best_table, discovered_tables):
+    truth_tables = [truth_table]
+
+    while len(truth_tables) >=1:
+
+        truth_table = truth_tables.pop()  # BFS or DFS depending on this line
+
+        blocks = get_blocks(truth_table)
+        if len(blocks) < len(get_blocks(best_table)):
+            best_table = truth_table
 
 
-n_inputs = 3
-#outputs = np.array([[1,1,0,0,1,1,0,1]]) #0xCD
-#outputs = np.array([[0,0,0,0,1,0,1,1]]) #0x0B
-#outputs = np.array([[1,1,1,0,1,0,0,0]]) #0xE8
-#outputs = np.array([[1,1,0,0,1,0,0,0]]) #0xC8
-#outputs = np.array([[0,0,1,1,0,1,1,1]]) #0x37
-#outputs = np.array([[0,0,1,1,1,1,0,1]]) #0x3D
-outputs = np.array([[0,1,0,1,0,1,0,1]]) #dependant on one input
+        # look at smallest block and see if we can move it to reduce the number of blocks
+        indices = np.argsort(blocks[:, 1])
 
-#n_inputs = 4
-#outputs = np.array([[0,0,1,1,0,1,1,1,0,0,1,1,0,1,1,1]])
+        for i in indices[indices != 0][indices[indices != 0] != max(indices)]:  #we can never move the end states, only move other states into their blocks
 
-if len(sys.argv) > 1: #if run from command line
-    n_inputs = int(sys.argv[1])
-
-    outputs_string = sys.argv[2]
-
-    if len(outputs_string) != 2**n_inputs:
-        print('WRONG NUMBER OF OUTPUTS')
-
-    outputs = list(map(int, list(outputs_string)))
-    outputs = np.array([outputs])
-
-#create inputs table
-inputs_table = []
-for n in range(2**n_inputs):
-    b_string = "{0:b}".format(n)
-    b_string = b_string.rjust(n_inputs, '0')
-    b_list = list(map(int, list(b_string)))
-    inputs_table.append(b_list)
-
-inputs_table = np.array(inputs_table)
+            block_start = np.sum(blocks[0:i, 1])
+            block_size = blocks[i, 1]
 
 
-truth_table = np.hstack((inputs_table, outputs.T))
-
-print('INPUT TABLE: ')
-print(truth_table)
-print()
-
-on_set = truth_table[truth_table[:, -1] == 1][:, :n_inputs]
-off_set = truth_table[truth_table[:, -1] == 0][:, :n_inputs]
-
-state_mapping = [off_set, on_set]
-
-simplified_state_mapping = simplify(state_mapping)
+            for s, state in enumerate(truth_table[block_start:block_start+block_size, :-1]): # for each state in the block
 
 
-
-truth_tables = [hash_table(truth_table)]
-best_table = truth_table
-
-def earl_grey(truth_table, best_table, truth_tables):
-
-    blocks = get_blocks(truth_table)
+                lower = truth_table[block_start+s -1, :-1]
+                higher = truth_table[block_start + s + 1, :-1]
 
 
+                if check_constraints(state, lower): #check if we can put state below
 
-    if len(blocks) < len(get_blocks(best_table)):
-        best_table = truth_table
-    #look at smallest block and see if we can move it to reduce the number of blocks
-    indices = np.argsort(blocks[:, 1])
+                    new_truth_table = copy.deepcopy(truth_table)
+                    new_truth_table[[s+block_start -1, s+block_start], :] = new_truth_table[[s+block_start, s+block_start-1], :]
+                    new_blocks = get_blocks(truth_table)
+                    #if len(new_blocks) <= len(blocks) : #dont accept swaps that increase the number of blocks
+                    if hash_table(new_truth_table) not in discovered_tables and len(new_blocks) <= len(blocks) :
+                        truth_tables.append(new_truth_table)
+                        discovered_tables.append(hash_table(new_truth_table))
 
-    for i in indices[indices != 0][indices[indices != 0] != max(indices)]:  #we can never move the end states, only move other states into their blocks
+                if check_constraints(higher, state): #check if we can put state above
 
-        block_start = np.sum(blocks[0:i, 1])
-        block_size = blocks[i, 1]
+                    new_truth_table = copy.deepcopy(truth_table)
+                    new_truth_table[[s+block_start, 1+s+block_start], :] = new_truth_table[[s+1+block_start, s+block_start], :]
 
+                    new_blocks = get_blocks(truth_table)
 
-        for s, state in enumerate(truth_table[block_start:block_start+block_size, :-1]): # for each state in the block
+                    #if len(new_blocks) <= len(blocks) :  # dont accpt swaps that increase the number of blocks
+                    if hash_table(new_truth_table) not in discovered_tables and len(new_blocks) <= len(blocks):
+                        truth_tables.append(new_truth_table)
+                        discovered_tables.append(hash_table(new_truth_table))
 
+    return truth_tables, best_table, discovered_tables
 
-            lower = truth_table[block_start+s -1, :-1]
+def get_activations(best_table, n_inputs, allowed_acts = ['TH', 'IT', 'BP', 'IB']):
 
-            if check_constraints(state, lower): #check if we can put state below
-
-                new_truth_table = copy.deepcopy(truth_table)
-                new_truth_table[[s+block_start -1, s+block_start], :] = new_truth_table[[s+block_start, s+block_start-1], :]
-                new_blocks = get_blocks(truth_table)
-                if len(new_blocks) <= len(blocks) and hash_table(new_truth_table) not in truth_tables: #dont accept swaps that increase the number of blocks
-                #if hash_table(new_truth_table) not in truth_tables:
-                    truth_tables.append(hash_table(new_truth_table))
-                    truth_table, best_table, truth_tables = earl_grey(new_truth_table, best_table, truth_tables)
-                else:
-                    return truth_table, best_table, truth_tables
-
-
-
-            higher = truth_table[block_start + s + 1, :-1]
-            if check_constraints(higher, state): #check if we can put state above
-
-                new_truth_table = copy.deepcopy(truth_table)
-                new_truth_table[[s+block_start, 1+s+block_start], :] = new_truth_table[[s+1+block_start, s+block_start], :]
-
-                new_blocks = get_blocks(truth_table)
-
-                if len(new_blocks) <= len(blocks) and hash_table(new_truth_table) not in truth_tables:  # dont accpt swaps that increase the number of blocks
-                #if hash_table(new_truth_table) not in truth_tables:
-                    truth_tables.append(hash_table(new_truth_table))
-                    truth_table, best_table, truth_tables = earl_grey(new_truth_table, best_table, truth_tables)
-                else:
-                    return truth_table, best_table, truth_tables
-
-
-    return truth_table, best_table, truth_tables
-
-def get_activations(best_table):
     blocks = get_blocks(best_table)
 
     pos = 0
 
     activations = OrderedDict()
 
-    if len(blocks) == 3 and np.all(blocks[:, 0] == np.array([1, 0, 1])):  # only situation where IBP is admissable
+    if 'IB' in allowed_acts and len(blocks) == 3 and np.all(blocks[:, 0] == np.array([1, 0, 1])):  # only situation where IBP is admissable
 
         activations['IB'] = []
-
+        this_IB = []
         for i in range(3):
             start = np.sum(blocks[0:pos + i, 1])
             end = np.sum(blocks[0:pos + i + 1, 1])
-            activations['IB'].append(best_table[start:end, :n_inputs])
-
+            this_IB.append(best_table[start:end, :n_inputs])
+        activations['IB'].append(this_IB)
         pos = len(blocks) - 1
+
 
     while pos < len(blocks) - 1:
 
-        if np.all(blocks[pos:pos + 3, 0] == np.array([0, 1, 0])):
+        if 'BP' in allowed_acts and np.all(blocks[pos:pos + 3, 0] == np.array([0, 1, 0])):
 
-            # activations['BP'] = best_table[start:end, :]
-            activations['BP'] = []
+            # can have multiple bp
+            this_BP = []
 
             # need to put all off states before and after the bandoass into its off set
             boundary = np.sum(blocks[0:pos + 1, 1])
             off_set = best_table[0: boundary, :n_inputs]
             # off_set = best_table[best_table[:, -1] == 0][0: boundary, :n_inputs]
-            activations['BP'].append(off_set)
+            this_BP.append(off_set)
             boundary1 = np.sum(blocks[0:pos + 2, 1])
 
             on_set = best_table[boundary: boundary1, :n_inputs]
-            activations['BP'].append(on_set)
+            this_BP.append(on_set)
             off_set = best_table[boundary1:, :n_inputs]
             # off_set = best_table[best_table[:, -1] == 0][boundary:, :n_inputs]
-            activations['BP'].append(off_set)
+            this_BP.append(off_set)
             pos += 2
 
-        elif pos == 0 and np.all(blocks[0:2, 0] == np.array([1, 0])):  # inverse threshold can only be at beginning
+            if 'BP' in activations.keys():
+                activations['BP'].append(this_BP)
+            else:
+                activations['BP'] = []
+                activations['BP'].append(this_BP)
 
-            activations['IT'] = []
+
+        elif 'IT' in allowed_acts and pos == 0 and np.all(blocks[0:2, 0] == np.array([1, 0])):  # inverse threshold can only be at beginning
+
+            this_IT = []
             boundary = np.sum(blocks[0:pos + 1, 1])
             on_set = best_table[0: boundary, :n_inputs]
-            activations['IT'].append(on_set)
+            this_IT.append(on_set)
             off_set = best_table[boundary:, :n_inputs]
             # off_set = best_table[best_table[:, -1] == 0][boundary:, :n_inputs]
-            activations['IT'].append(off_set)
+            this_IT.append(off_set)
             pos += 1
 
-        elif pos == len(blocks) - 2 and np.all(blocks[-2:, 0] == np.array([0, 1])):  # threshld can only be at end
+
+            activations['IT'] = []
+            activations['IT'].append(this_IT)  # can only have one inverse threhsold
+
+
+        elif 'TH' in allowed_acts and  pos == len(blocks) - 2 and np.all(blocks[-2:, 0] == np.array([0, 1])):  # threshld can only be at end
             start = np.sum(blocks[0:pos, 1])
-            activations['TH'] = []
+            activations['TH'] = []  # can only have one threshold
 
             # need to put all previous off states into thresholds off state
             boundary = np.sum(blocks[0:pos + 1, 1])
-
+            this_TH = []
             # off_set = best_table[best_table[:, -1] == 0][0: boundary, :n_inputs]
             off_set = best_table[0: boundary, :n_inputs]
-            activations['TH'].append(off_set)
+            this_TH.append(off_set)
 
             on_set = best_table[boundary:, :n_inputs]
-            activations['TH'].append(on_set)
-
+            this_TH.append(on_set)
+            activations['TH'].append(this_TH)
             pos += 1
+        else: #failed to assign and so gate isnt possible
+            return -1
+
+
+
     return activations
 
-_, best_table, truth_tables = earl_grey(truth_table, best_table, truth_tables)
-print(len(truth_tables))
-print('BEST TABLE: ')
-print(best_table)
-print()
 
-#analyse best table to create a grid of bacterial populations
-# IT only allowed at low end, threshold only allowed at high end
-activations = get_activations(best_table)
+if __name__ == '__main__':
+    n_inputs = 3
+    #outputs = np.array([[1,1,0,0,1,1,0,1]]) #0xCD
+    #outputs = np.array([[0,0,0,0,1,0,1,1]]) #0x0B
+    #outputs = np.array([[1,1,1,0,1,0,0,0]]) #0xE8
+    #outputs = np.array([[1,1,0,0,1,0,0,0]]) #0xC8
+    #outputs = np.array([[0,0,1,1,0,1,1,1]]) #0x37
+    #outputs = np.array([[0,0,1,1,1,1,0,1]]) #0x3D
+    outputs = np.array([1,0,1,0,1,1,1,0]) #0xAE
+    #outputs = np.array([[0,1,0,1,0,1,0,1]]) #dependant on one input
 
-print('NODES: ')
-for act in activations.keys():
-    state_mapping = activations[act]
+    n_inputs = 4
+    outputs = np.array([[0,0,1,1,0,1,1,1,0,0,1,1,0,1,1,1]])
+
+    if len(sys.argv) > 1: #if run from command line
+        n_inputs = int(sys.argv[1])
+
+        outputs_string = sys.argv[2]
+
+        if len(outputs_string) != 2**n_inputs:
+            print('WRONG NUMBER OF OUTPUTS')
+
+        outputs = list(map(int, list(outputs_string)))
+        outputs = np.array([outputs])
+
+    #create inputs table
+    inputs_table = []
+    for n in range(2**n_inputs):
+        b_string = "{0:b}".format(n)
+        b_string = b_string.rjust(n_inputs, '0')
+        b_list = list(map(int, list(b_string)))
+        inputs_table.append(b_list)
+
+    inputs_table = np.array(inputs_table)
 
 
-    simplified_state_mapping = simplify(state_mapping)
-    print(act)
-    for s in simplified_state_mapping:
-        print(s)
+    truth_table = np.hstack((inputs_table, outputs.reshape(-1, 2**n_inputs).T))
+
+    print('INPUT TABLE: ')
+    print(truth_table)
+    print()
+
+    on_set = truth_table[truth_table[:, -1] == 1][:, :n_inputs]
+    off_set = truth_table[truth_table[:, -1] == 0][:, :n_inputs]
+
+    state_mapping = [off_set, on_set]
+
+    simplified_state_mapping = simplify(state_mapping, n_inputs)
+
+
+
+    truth_tables = [hash_table(truth_table)]
+    best_table = truth_table
+
+
+
+    _, best_table, truth_tables = earl_grey(truth_table, best_table, truth_tables)
+    print(len(truth_tables))
+    print('BEST TABLE: ')
+    print(best_table)
+    print()
+
+    #analyse best table to create a grid of bacterial populations
+    # IT only allowed at low end, threshold only allowed at high end
+    activations = get_activations(best_table, n_inputs)
+
+    print('NODES: ')
+    for act in activations.keys():
+        for state_mapping in activations[act]:
+            print(state_mapping)
+
+            simplified_state_mapping = simplify(state_mapping, n_inputs)
+            print(act)
+            for s in simplified_state_mapping:
+                print(s)
 
 
 

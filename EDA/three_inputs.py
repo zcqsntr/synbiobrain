@@ -34,12 +34,12 @@ for outputs in all_outputs:
     truth_tables = []
     best_table = truth_table
 
-    _, best_table, truth_tables = earl_grey(truth_table, best_table, truth_tables)
+    best_table, truth_tables = earl_grey(truth_table)
 
 
     # analyse best table to create a grid of bacterial populations
     # IT only allowed at low end, threshold only allowed at high end
-    activations = get_activations(best_table, n_inputs)
+    activations = get_activations(best_table, n_inputs, allowed_acts = ['TH', 'IT'])
 
     try:
         n_colonies = 0

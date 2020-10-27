@@ -2,25 +2,29 @@ import numpy as np
 import copy
 from collections import OrderedDict
 import sys
+import queue as qu
 
 def get_blocks(truth_table):
-    #counts the number of blocks of 0s and 1s
+    #returns the of blocks of 0s and 1s and the number of 1 blocks
     outputs = truth_table[:, -1]
 
     block = outputs[0]
     blocks = [block]
     block_sizes = [1]
 
+    n_ones = 0
+
     for i in range(1,len(outputs)):
         if outputs[i] != block:
 
             block = outputs[i]
+            n_ones += block #count the ones
             blocks.append(block)
             block_sizes.append(1)
         else:
             block_sizes[-1] += 1
 
-    return np.vstack((blocks, block_sizes)).T
+    return np.vstack((blocks, block_sizes)).T, n_ones
 
 def check_constraints(lower, upper):
     #checks whther putting lower and upper in this order is valid
@@ -75,17 +79,34 @@ def simplify(state_mapping, n_inputs):
 
     return new_state_mapping
 
-def earl_grey(truth_table, best_table, discovered_tables):
-    truth_tables = [truth_table]
+def earl_grey(truth_table, target_n_nodes = -1):
 
-    while len(truth_tables) >=1:
 
-        truth_table = truth_tables.pop()  # BFS or DFS depending on this line
 
-        blocks = get_blocks(truth_table)
-        if len(blocks) < len(get_blocks(best_table)):
+    discovered_tables = {hash_table(truth_table)} # use a set for this
+
+    blocks, n_ones = get_blocks(truth_table)
+    truth_tables = qu.PriorityQueue()
+
+
+    truth_tables.put((n_ones, len(discovered_tables), truth_table))
+    best_table = truth_table
+
+
+    while not truth_tables.empty():
+
+
+        n_ones, _, truth_table = truth_tables.get()  # BFS or DFS depending on this line
+
+
+        if n_ones < get_blocks(best_table)[1]:
             best_table = truth_table
 
+        if n_ones <= target_n_nodes: #exit condition
+
+            return best_table, discovered_tables
+
+        blocks, _ = get_blocks(truth_table)
 
         # look at smallest block and see if we can move it to reduce the number of blocks
         indices = np.argsort(blocks[:, 1])
@@ -107,29 +128,31 @@ def earl_grey(truth_table, best_table, discovered_tables):
 
                     new_truth_table = copy.deepcopy(truth_table)
                     new_truth_table[[s+block_start -1, s+block_start], :] = new_truth_table[[s+block_start, s+block_start-1], :]
-                    new_blocks = get_blocks(truth_table)
+                    new_blocks, new_n_ones = get_blocks(new_truth_table)
                     #if len(new_blocks) <= len(blocks) : #dont accept swaps that increase the number of blocks
-                    if hash_table(new_truth_table) not in discovered_tables and len(new_blocks) <= len(blocks) :
-                        truth_tables.append(new_truth_table)
-                        discovered_tables.append(hash_table(new_truth_table))
+                    if hash_table(new_truth_table) not in discovered_tables:
+                        discovered_tables.add(hash_table(new_truth_table))
+                        truth_tables.put((new_n_ones, len(discovered_tables), new_truth_table))
+
 
                 if check_constraints(higher, state): #check if we can put state above
 
                     new_truth_table = copy.deepcopy(truth_table)
                     new_truth_table[[s+block_start, 1+s+block_start], :] = new_truth_table[[s+1+block_start, s+block_start], :]
 
-                    new_blocks = get_blocks(truth_table)
+                    new_blocks, new_n_ones = get_blocks(new_truth_table)
 
                     #if len(new_blocks) <= len(blocks) :  # dont accpt swaps that increase the number of blocks
-                    if hash_table(new_truth_table) not in discovered_tables and len(new_blocks) <= len(blocks):
-                        truth_tables.append(new_truth_table)
-                        discovered_tables.append(hash_table(new_truth_table))
+                    if hash_table(new_truth_table) not in discovered_tables:
+                        discovered_tables.add(hash_table(new_truth_table))
+                        truth_tables.put((new_n_ones, len(discovered_tables), new_truth_table))
 
-    return truth_tables, best_table, discovered_tables
+
+    return best_table, discovered_tables
 
 def get_activations(best_table, n_inputs, allowed_acts = ['TH', 'IT', 'BP', 'IB']):
 
-    blocks = get_blocks(best_table)
+    blocks = get_blocks(best_table)[0]
 
     pos = 0
 
@@ -215,6 +238,8 @@ def get_activations(best_table, n_inputs, allowed_acts = ['TH', 'IT', 'BP', 'IB'
 
 
 if __name__ == '__main__':
+
+
     n_inputs = 3
     #outputs = np.array([[1,1,0,0,1,1,0,1]]) #0xCD
     #outputs = np.array([[0,0,0,0,1,0,1,1]]) #0x0B
@@ -227,6 +252,15 @@ if __name__ == '__main__':
 
     n_inputs = 4
     outputs = np.array([[0,0,1,1,0,1,1,1,0,0,1,1,0,1,1,1]])
+
+
+
+    #priority encoder
+    #outputs = np.array([[0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1]])
+    #outputs = np.array([[0,0,1,1,0,0,0,0,1,1,1,1,1,1,1,1]])
+    #outputs = np.array([[1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]])
+
+
 
     if len(sys.argv) > 1: #if run from command line
         n_inputs = int(sys.argv[1])
@@ -263,18 +297,11 @@ if __name__ == '__main__':
 
     simplified_state_mapping = simplify(state_mapping, n_inputs)
 
+    best_table, discovered_tables = earl_grey(truth_table)
 
-
-    truth_tables = [hash_table(truth_table)]
-    best_table = truth_table
-
-
-
-    _, best_table, truth_tables = earl_grey(truth_table, best_table, truth_tables)
-    print(len(truth_tables))
     print('BEST TABLE: ')
     print(best_table)
-    print()
+    print(print(get_blocks(best_table)[1]))
 
     #analyse best table to create a grid of bacterial populations
     # IT only allowed at low end, threshold only allowed at high end
@@ -283,7 +310,7 @@ if __name__ == '__main__':
     print('NODES: ')
     for act in activations.keys():
         for state_mapping in activations[act]:
-            print(state_mapping)
+
 
             simplified_state_mapping = simplify(state_mapping, n_inputs)
             print(act)

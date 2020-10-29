@@ -4,7 +4,7 @@ from collections import OrderedDict
 import sys
 
 def get_blocks(truth_table):
-    #counts the number of blocks of 0s and 1s
+    #gets the blocks of 0s and 1s
     outputs = truth_table[:, -1]
 
     block = outputs[0]
@@ -33,7 +33,6 @@ def hash_table(truth_table):
         for s in input_states:
             hashed += str(s)
     return hashed
-
 
 def simplify(state_mapping, n_inputs):
     redenduant_inputs = []

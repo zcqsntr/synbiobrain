@@ -30,6 +30,21 @@ def check_constraints(lower, upper):
     #checks whther putting lower and upper in this order is valid
     return np.sum(lower*upper) < np.sum(upper)
 
+def create_truth_table(outputs):
+    # create inputs table
+    inputs_table = []
+    n_inputs = int(np.log2(outputs.size))
+    for n in range(outputs.size):
+        b_string = "{0:b}".format(n)
+        b_string = b_string.rjust(n_inputs, '0')
+        b_list = list(map(int, list(b_string)))
+        inputs_table.append(b_list)
+
+    inputs_table = np.array(inputs_table)
+
+    truth_table = np.hstack((inputs_table, outputs.reshape(-1, 2 ** n_inputs).T))
+    return truth_table
+
 def hash_table(truth_table):
     #hashes truth table into a unique string so we can keep track of which ones have been visited
     hashed = ''
@@ -80,8 +95,6 @@ def simplify(state_mapping, n_inputs):
     return new_state_mapping
 
 def earl_grey(truth_table, target_n_nodes = -1):
-
-
 
     discovered_tables = {hash_table(truth_table)} # use a set for this
 
@@ -241,17 +254,17 @@ if __name__ == '__main__':
 
 
     n_inputs = 3
-    #outputs = np.array([[1,1,0,0,1,1,0,1]]) #0xCD
+    outputs = np.array([[1,1,0,0,1,1,0,1]]) #0xCD
     #outputs = np.array([[0,0,0,0,1,0,1,1]]) #0x0B
     #outputs = np.array([[1,1,1,0,1,0,0,0]]) #0xE8
     #outputs = np.array([[1,1,0,0,1,0,0,0]]) #0xC8
     #outputs = np.array([[0,0,1,1,0,1,1,1]]) #0x37
     #outputs = np.array([[0,0,1,1,1,1,0,1]]) #0x3D
-    outputs = np.array([1,0,1,0,1,1,1,0]) #0xAE
+    #outputs = np.array([[1,0,1,0,1,1,1,0]]) #0xAE
     #outputs = np.array([[0,1,0,1,0,1,0,1]]) #dependant on one input
 
-    n_inputs = 4
-    outputs = np.array([[0,0,1,1,0,1,1,1,0,0,1,1,0,1,1,1]])
+    #n_inputs = 4
+    #outputs = np.array([[0,0,1,1,0,1,1,1,0,0,1,1,0,1,1,1]]) # threshold
 
 
 
@@ -273,18 +286,11 @@ if __name__ == '__main__':
         outputs = list(map(int, list(outputs_string)))
         outputs = np.array([outputs])
 
-    #create inputs table
-    inputs_table = []
-    for n in range(2**n_inputs):
-        b_string = "{0:b}".format(n)
-        b_string = b_string.rjust(n_inputs, '0')
-        b_list = list(map(int, list(b_string)))
-        inputs_table.append(b_list)
-
-    inputs_table = np.array(inputs_table)
 
 
-    truth_table = np.hstack((inputs_table, outputs.reshape(-1, 2**n_inputs).T))
+
+
+    truth_table = create_truth_table(outputs)
 
     print('INPUT TABLE: ')
     print(truth_table)

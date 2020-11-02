@@ -93,8 +93,8 @@ def modify_covers(covers, frm, to):
 
 
 n_inputs = 3
-#outputs = np.array([[0,1,0,1,0,1,0,1]]) #dependant on one input
-outputs = np.array([[1,1,0,0,1,1,0,1]]) #0xCD
+outputs = np.array([[0,1,0,1,0,1,0,1]]) #dependant on one input
+#outputs = np.array([[1,1,0,0,1,1,0,1]]) #0xCD
 
 #n_inputs = 4
 #outputs = np.array([[0,0,1,1,0,1,1,1,0,0,1,1,0,1,1,1]]) #threshold
@@ -133,14 +133,63 @@ while not finished:
     # each block of ones is a cover, try and maximise each cover in turn, starting from largest cover
     cov_sort = np.argsort(covers[:, 1])  # this will bias towards states in the middle, probably not what we want
 
-    # get smallest cover
-    smallest_cover = covers[cov_sort[0]]
 
-    print('small:', smallest_cover)
-    small_start = smallest_cover[0]
-    small_end = smallest_cover[0] + smallest_cover[1]
+    test_table = copy.deepcopy(current_table)
+
+    for index in cov_sort:
+        # get smallest cover
+        smallest_cover = covers[index]
+
+        print('small:', smallest_cover)
+        small_start = smallest_cover[0]
+        small_end = smallest_cover[0] + smallest_cover[1]
+
+
+        # try and eliminate smallest cover by puttin gones into the covers on either side
+
+        print(covers)
+        if index > 0:
+            lower_cover = covers[index -1]
+        else:
+            lower_cover = None
+
+        if index < len(covers) - 1:
+            higher_cover = covers[index+ 1]
+        else:
+            higher_cover = None
+
+        test_table = copy.deepcopy(current_table)
+
+        print('lc:', lower_cover)
+        print(smallest_cover)
+        print('hc:', higher_cover)
+        if lower_cover is not None:
+
+            # go through oes and put as many into the lower cover as possible
+            for i, state in enumerate(range(small_start, small_end)):
+
+                if can_move(test_table, state, lower_cover[0] + lower_cover[1] + i):
+                    test_table = move(test_table, state, lower_cover[0] + lower_cover[1] + i)
+                    smallest_cover[0] += 1
+                    smallest_cover[1] -=1
+
+        small_start = smallest_cover[0]
+        small_end = smallest_cover[0] + smallest_cover[1]
+
+        if higher_cover is not None:
+            for i, state in enumerate(range(small_start, small_end)[::-1]):
+                if can_move(test_table, state, higher_cover[0] - i - 1):
+                    test_table = move(test_table, state, higher_cover[0] - i - 1)
+                    smallest_cover[1] -= 1
+
+        if smallest_cover[1] == 0:
+            current_table = test_table
+            finished = False
+            break
+
 
     # try and eliminate smallest covers by putting ones into other covers, starting with the largest cover
+    '''
     test_table = copy.deepcopy(current_table)
     for index in cov_sort[:: -1]:
 
@@ -183,8 +232,10 @@ while not finished:
                 break
 
             print(can_eliminate)
+    '''
 
 
+print('result:', current_table)
 
 valid = True
 for i in range(2**n_inputs):
@@ -197,7 +248,7 @@ for i in range(2**n_inputs):
 
 print('valid:', valid)
 
-print(current_table)
+
 
 
 

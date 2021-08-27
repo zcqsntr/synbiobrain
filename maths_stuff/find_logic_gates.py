@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import matplotlib as mpl
 from mpl_toolkits.mplot3d import Axes3D
 from matplotlib import cm
+import matplotlib.colors
 
 def threshold(x, t):
     if x > t:
@@ -59,7 +60,14 @@ for k in range(3):
     print('median: ', np.median(AHL))
     print()
     '''
+    plt.figure()
+    plt.imshow(AHL[-1, :].reshape(nx, ny))
+
     threshold_act = get_activation_map(AHL[-1, :], lambda x: threshold(x, t))
+
+    plt.figure()
+    cmap = matplotlib.colors.ListedColormap(['white', 'green'])
+    plt.imshow(threshold_act.reshape(nx, ny), cmap = cmap)
 
 
 
@@ -74,12 +82,10 @@ for k in range(3):
 
 
 
-    fig = plt.figure()
-    plot = plt.imshow(np.zeros_like(AHL[-1, :]).reshape(nx, ny), cmap = 'plasma')
-    plt.title('Threshold in state ' + str(k))
-    plt.savefig('Threshold in state ' + str(k) + '.pdf')
-
-
+    #fig = plt.figure()
+    #plot = plt.imshow(np.zeros_like(AHL[-1, :]).reshape(nx, ny), cmap = 'plasma')
+    #plt.title('Threshold in state ' + str(k))
+    #plt.savefig('Threshold in state ' + str(k) + '.pdf')
 
 
 
@@ -111,7 +117,8 @@ for k in range(3):
 
     plt.show()
     '''
-
+plt.figure()
+plt.imshow(np.zeros_like(AHL[-1, :]).reshape(nx, ny), cmap=cmap)
 plt.show()
 
 threshold_acts = [np.zeros_like(AHL[-1])] + threshold_acts

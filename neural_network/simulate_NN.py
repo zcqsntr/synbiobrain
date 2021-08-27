@@ -1,4 +1,4 @@
- import numpy as np
+import numpy as np
 from scipy.sparse import diags
 from mpl_toolkits.mplot3d import Axes3D  # noqa: F401 unused import
 
@@ -8,11 +8,14 @@ import matplotlib.animation as animation
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 import math
+import sys
+sys.path.append('./old')
 from get_grid_config import plot_grid
+from get_grid_config_v2 import *
 import copy
 from matplotlib.animation import FFMpegWriter
 from scipy import optimize
-import sys
+
 from train_network import *
 
 
@@ -500,11 +503,18 @@ if __name__ == '__main__':
     node_radius = 0.1
     u0 = np.zeros((n_AHLs, nx, ny))
 
-    node_positions = np.load(working_dir + '/node_positions.npy', allow_pickle = True)
-    minimal_model = np.load(working_dir + '/minimal_model.npy', allow_pickle = True)
-    layer_sizes = minimal_model[0]
+    best_grid = np.load(working_dir + '/best_grid.npy', allow_pickle = True).item()
+    print(dir(best_grid))
+    print(best_grid.get_nodes())
 
-    print(minimal_model)
+    layer_sizes = best_grid.layer_sizes
+
+    print(layer_sizes)
+    node_positions = [node.get_position() for node in best_grid.get_nodes()]
+    #minimal_model = np.load(working_dir + '/minimal_model.npy', allow_pickle = True)
+
+    print(node_positions)
+
 
     max_x, max_y = normalise_positions(node_positions)
     print('node_positions: ', node_positions)

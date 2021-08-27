@@ -31,7 +31,6 @@ from tensorflow.keras.optimizers import Adam
 from tensorflow_model_optimization.sparsity import keras as sparsity
 from time import time
 
-tf.reset_default_graph()
 
 
 # MAYBE SQUASH THE ACTIVATION FUNCTIONS IN THE X DIRECTION
@@ -469,7 +468,7 @@ if __name__ == '__main__':
     plt.figure()
     plt.scatter(x_train,y_train)
     plt.title('training function')
-    plt.savefig(working_dir + '/training_function.png')
+    plt.savefig(working_dir + '/training_function.png', dpi = 300)
 
     model, minimal_model, history = train_network(layer_sizes, x_train, y_train, n_epochs)
     print(minimal_model)
@@ -479,7 +478,7 @@ if __name__ == '__main__':
     plt.plot(history.history['acc'])
     plt.ylabel('accuracy')
     plt.xlabel('epoch')
-    plt.savefig(working_dir + '/training_accuracy.png')
+    plt.savefig(working_dir + '/training_accuracy.png', dpi = 300)
 
     # loss_and_metrics = model.evaluate(X_test, Y_test)
     x_test, y_test = training_func(10000)
@@ -490,7 +489,7 @@ if __name__ == '__main__':
     plt.figure()
     plt.scatter(x_test,ys)
     plt.title('trained model output')
-    plt.savefig(working_dir + '/trained_model_output.png')
+    plt.savefig(working_dir + '/trained_model_output.png', dpi = 300)
 
 
 
@@ -515,7 +514,7 @@ if __name__ == '__main__':
     plt.figure()
     plt.scatter(x_test,ys)
     plt.title('trained model output')
-    plt.savefig(working_dir + '/minimal_model_output.png')
+    plt.savefig(working_dir + '/minimal_model_output.png', dpi = 300)
 
 
 
@@ -526,7 +525,7 @@ if __name__ == '__main__':
     plt.figure()
     plt.scatter(x_train[:,0], x_train[:,1], c = y_train.reshape(10000,))
     plt.title('training function')
-    plt.savefig(working_dir + '/training_function.png')
+    plt.savefig(working_dir + '/training_function.png', dpi = 300)
     for i in range(10):
         print(x_train[i])
     plt.show()
@@ -544,7 +543,7 @@ if __name__ == '__main__':
 
 
     print(minimal_model)
-    np.save(working_dir + '/minimal_model.npy', minimal_model)
+    np.save(working_dir + '/minimal_model.npy', minimal_model, dpi = 300)
 
     print('WEIGHTS AFTER MINIMISATION: ')
     print('weights:', minimal_model[1])
@@ -558,7 +557,7 @@ if __name__ == '__main__':
     plt.plot(history.history['acc'])
     plt.ylabel('accuracy')
     plt.xlabel('epoch')
-    plt.savefig(working_dir + '/training_accuracy.png')
+    plt.savefig(working_dir + '/training_accuracy.png', dpi = 300)
 
 
     #loss_and_metrics = model.evaluate(X_test, Y_test)
@@ -572,7 +571,7 @@ if __name__ == '__main__':
     plt.figure()
     plt.scatter(x_test[:,0], x_test[:,1], c = ys.reshape(10000,))
     plt.title('trained model output')
-    plt.savefig(working_dir + '/trained_model_output.png')
+    plt.savefig(working_dir + '/trained_model_output.png', dpi = 300)
 
 
     
@@ -593,5 +592,5 @@ if __name__ == '__main__':
     plt.figure()
     plt.scatter(x_test[:, 0], x_test[:, 1], c = ys.reshape(10000,))
     plt.title('trained model output')
-    plt.savefig(working_dir + '/minimal_model_output.png')
+    plt.savefig(working_dir + '/minimal_model_output.png', dpi = 300)
 

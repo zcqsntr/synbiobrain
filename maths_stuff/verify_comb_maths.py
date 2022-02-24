@@ -16,9 +16,11 @@ grid_corners = np.array([[-1, 1], [-1, 1]]) # in cm
 nx = 200
 ny = 200
 
-node_dim = np.array([5, 5])
+node_dim = np.array([6, 5])
 
 D = 3e-6 #cm^2/s
+D = 5e-7 #cm^2/s
+
 
 grid = SynBioBrainCUDA(grid_corners, nx, ny, checkerboard = False, dtype = 'float32')
 print('vertices: ', grid.n_vertices)
@@ -33,7 +35,8 @@ input_indeces = np.array([12])
 #input_indeces = np.array([1374, 1375, 1376, 1377, 1378])
 
 
-node_radius = 1/30
+#node_radius = 1/30
+node_radius = 1/20
 
 try:
     one_hot_in[input_indeces] = 1
@@ -44,17 +47,20 @@ except:
 
 #one_hot_out[4354] = 1
 
-production_rate = 0.00001
+
+production_rate = 0
+#production_rate = 0.00001
+
 #production_rate = 0.00000001
 ps = [10**(-1.9),10**(-0.6) ,10**(-1.9), 10**(-0.6)] # thresholds in micro molar
 #ps = [10**(-1.9),10**(-0.6) ,10**(-2), 10]
 print(ps)
 
 delta_t = 100
-delta_t = (grid.dx)**2/(2*D) * 0.5 # maximum stable timestep with 50% safety
+delta_t = (grid.dx)**2/(2*D) * 0.5 # maximum stable timestep with 20% safety
 print('delta_t (seconds): ', delta_t)
 
-simulation_time = 40 #number of real hours to simulate
+simulation_time = 10 #number of real hours to simulate
 
 total_timesteps = int(simulation_time*60*60/delta_t)
 print('total_timesteps: ', total_timesteps)
@@ -64,7 +70,7 @@ bytes = bits/8
 print('number of bytes: ', bytes)
 
 # assume 2.5gb of v mem free for sim
-n_loops = math.ceil(bytes/(2.2*1e9))
+n_loops = math.ceil(bytes/(1.5*1e9))
 print('n_loops: ', n_loops)
 n_time_steps = int(total_timesteps/n_loops) # n_timesteps per loop
 print('n_timesteps per loop: ', n_time_steps)
@@ -94,9 +100,11 @@ print('SIMULATION TIME (hours): ', simulation_time)
 heated_element = np.zeros(grid.n_vertices)
 all_node_positions = grid.get_node_positions(node_dim, grid_corners)
 
-vertices, one_hot_vertices = grid.assign_vertices(grid.vertex_positions, np.transpose(all_node_positions[4]).reshape(1,2), node_radius)
 
-#heated_element[vertices] = 90
+
+
+
+
 '''
 for i in range(25):
     for j in range(25):
@@ -104,9 +112,27 @@ for i in range(25):
         if not i == j:
 '''
 
-i = 6
-j = 18
+i = 16
+j = 17
+
+
+#i = 6
+#j = 18
+save_path = './larger_area/'
+save_path = './larger_area_instantaneous_source/'
 for k, input_indeces in enumerate([np.array([i]), np.array([j]), np.array([i, j])]):
+    heated_element = np.zeros(grid.n_vertices)
+    if k == 0:
+        vertices, one_hot_vertices = grid.assign_vertices(grid.vertex_positions, np.transpose(all_node_positions[16]).reshape(1,2), node_radius)
+    if k == 1:
+        vertices, one_hot_vertices = grid.assign_vertices(grid.vertex_positions, np.transpose(all_node_positions[17]).reshape(1,2), node_radius)
+    if k == 2:
+        vertices, one_hot_vertices = grid.assign_vertices(grid.vertex_positions, all_node_positions[16:18], node_radius)
+    heated_element[vertices] = 10.
+
+    plt.figure()
+    plt.imshow(heated_element.reshape(nx,ny))
+
 
     with Timer() as t:
 
@@ -115,10 +141,11 @@ for k, input_indeces in enumerate([np.array([i]), np.array([j]), np.array([i, j]
         print('mean: ',np.mean( overall_Us))
     print('overall us: ', overall_Us.shape)
     print(np.array(overall_Us[::10]).shape)
-    np.save('./timescale/' + str(i) + ',' + str(j) + ': ' + str(k) + '.npy', np.array(overall_Us[::10]))
-        #for 300x300 grid
+    np.save(save_path + str(i) + ',' + str(j) + ': ' + str(k) + '.npy', np.array(overall_Us[::10]))
+    del overall_Us
+    del overall_activated
 
-
+    '''
     print(np.all(overall_Us[-1] == overall_Us[-2]))
     #plt.plot([overall_Us[i][49063] for i in range(len(overall_Us))])
     #plt.show()
@@ -138,23 +165,23 @@ for k, input_indeces in enumerate([np.array([i]), np.array([j]), np.array([i, j]
     ax.set_ylabel('[AHL]')
     plot = ax.plot_trisurf(grid.vertex_positions[:,0], grid.vertex_positions[:,1], overall_Us[-1], shade=False, cmap=cm.coolwarm, linewidth=0)
     #plot = plt.imshow(overall_Us[-1].reshape(grid.nx, grid.ny), cmap='plasma')
-    np.save("./timescale/AHL_ts.npy", overall_Us)
+    np.save(save_path + "AHL_ts.npy", overall_Us)
 
-    plt.show()
+    #plt.show()
 
 
     # plot the anmations
-    pdf = matplotlib.backends.backend_pdf.PdfPages("./timescale/AHL.pdf")
+    pdf = matplotlib.backends.backend_pdf.PdfPages(save_path+"AHL.pdf")
     fig = plt.figure()
     ims = []
-    for i in range(0,len(overall_Us), frame_skip):
-        print(i)
+    for n in range(0,len(overall_Us), frame_skip):
+        print(n)
         #ax = fig.gca(projection = '3d')
         #plot = ax.bar3d(x, y, bottom, width, depth, Us[i], shade=True, color = 'b')
-        fig.suptitle('time: ' + str(delta_t*i))
+        fig.suptitle('time: ' + str(delta_t*n))
         #plot = ax.plot_surface(X, Y, Us[i].reshape(grid.nx, grid.ny), rstride=1, cstride=1, cmap=cm.coolwarm,
         #    linewidth=0, antialiased=False)
-        plot = plt.imshow(overall_Us[i].reshape(grid.nx, grid.ny), cmap='plasma', vmin = 0)
+        plot = plt.imshow(overall_Us[n].reshape(grid.nx, grid.ny), cmap='plasma', vmin = 0)
 
         ims.append([plot])
         pdf.savefig(fig)
@@ -165,28 +192,30 @@ for k, input_indeces in enumerate([np.array([i]), np.array([j]), np.array([i, j]
 
     pdf.close()
     plt.title('AHL_conc')
-    plt.show()
+    #plt.show()
 
     plt.close()
-    pdf = matplotlib.backends.backend_pdf.PdfPages("./timescale/GFP.pdf")
+    pdf = matplotlib.backends.backend_pdf.PdfPages(save_path+"GFP.pdf")
     fig = plt.figure()
     ims = []
     cmap = mpl.colors.ListedColormap(['g', 'k'])
     bounds = [0., 0.5, 1.]
     norm = mpl.colors.BoundaryNorm(bounds, cmap.N)
 
-    for i in range(0,len(overall_activated), frame_skip):
-        print(i)
-        fig.suptitle('time: ' + str(delta_t*i))
+    for n in range(0,len(overall_activated), frame_skip):
+        print(n)
+        fig.suptitle('time: ' + str(delta_t*n))
 
 
-        plot = plt.imshow(overall_activated[i].reshape(grid.nx, grid.ny), cmap = 'inferno')
+        plot = plt.imshow(overall_activated[n].reshape(grid.nx, grid.ny), cmap = 'inferno')
 
         ims.append([plot])
         pdf.savefig(fig)
 
     anim = animation.ArtistAnimation(fig, ims, interval = 200, blit = True, repeat_delay = 100)
-    plt.show()
+    #plt.show()
     pdf.close()
 
-    np.save("./timescale/GFP_ts.npy", overall_activated)
+    np.save(save_path+"GFP_ts.npy", overall_activated)
+    '''
+plt.show()

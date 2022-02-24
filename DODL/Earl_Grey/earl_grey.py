@@ -281,6 +281,7 @@ if __name__ == '__main__':
     outputs = np.array([[0,0,0,1,0,0,1,1]]) #dependant on one input
     #outputs = np.array([[1,1,0,0,1,1,0,1]]) #0xCD
 
+    outputs = np.array([0,0,0,1,1,0,1,1])
 
     #outputs = np.array([[0,0,1,1,0,1,1,1,0,0,1,1,0,1,1,1]]) #threshold
 

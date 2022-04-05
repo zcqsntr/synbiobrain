@@ -195,13 +195,10 @@ def rough_optimisation(truth_table):
 
 
 
-
-
-
 def earl_grey(outputs):
     n_inputs = int(np.log2(outputs.size))
     truth_table = create_truth_table(outputs)
-    truth_table,_ = rough_optimisation(truth_table)
+    #truth_table,_ = rough_optimisation(truth_table)
 
     current_table = copy.deepcopy(truth_table)
     current_table = truth_table
@@ -279,9 +276,13 @@ def earl_grey(outputs):
 
 if __name__ == '__main__':
     outputs = np.array([[0,0,0,1,0,0,1,1]]) #dependant on one input
+    outputs = np.array([[0,0,1,1,1,1,0,1]])
+
+    outputs = np.array([[1,0,1,0,1,1,1,0]])
     #outputs = np.array([[1,1,0,0,1,1,0,1]]) #0xCD
 
     outputs = np.array([0,0,0,1,1,0,1,1])
+
 
     #outputs = np.array([[0,0,1,1,0,1,1,1,0,0,1,1,0,1,1,1]]) #threshold
 

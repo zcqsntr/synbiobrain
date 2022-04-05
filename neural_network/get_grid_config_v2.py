@@ -8,6 +8,21 @@ import sys
 import pickle
 
 from time import time
+import matplotlib as mpl
+mpl.use('tkagg')
+import matplotlib.pyplot as plt
+
+SMALL_SIZE = 14
+MEDIUM_SIZE = 16
+BIGGER_SIZE = 20
+
+plt.rc('font', size=SMALL_SIZE)          # controls default text sizes
+plt.rc('axes', titlesize=SMALL_SIZE)     # fontsize of the axes title
+plt.rc('axes', labelsize=MEDIUM_SIZE)    # fontsize of the x and y labels
+plt.rc('xtick', labelsize=SMALL_SIZE)    # fontsize of the tick labels
+plt.rc('ytick', labelsize=SMALL_SIZE)    # fontsize of the tick labels
+plt.rc('legend', fontsize=SMALL_SIZE)    # legend fontsize
+plt.rc('figure', titlesize=BIGGER_SIZE)  # fontsize of the figure title
 
 # grid defined by number of layers, number of nodes in each layer of each activation function and positions of nodes
 
@@ -29,8 +44,7 @@ def sigmoid(x):
 S = 3.8e-3  # nmol/h
 C = 3e-6
 
-def threshold_on(x):
-    return sigmoid(x/S - 5)*S
+
 
 def threshold_on(x):
     #x: nmol/mm^2
@@ -43,10 +57,8 @@ def threshold_on(x):
     min = 0
     return (hill(x/C, n, kd, min, max)/max)*S
 
-
-def threshold_off(x):
-    return (1 - sigmoid(x/S - 5))*S
-
+def threshold_on(x):
+    return sigmoid(x - 5)
 
 def threshold_off(x):
     # x: nmol/mm^2
@@ -58,6 +70,11 @@ def threshold_off(x):
     C = 3e-6  # converesion from nM to nmol/mm^2
     min = 0
     return (1 - hill(x/C, n, kd, min, max)/max)*S
+def threshold_off(x):
+    return (1 - sigmoid(x- 5))
+
+
+
 
 
 def bandpass(x):
@@ -68,6 +85,35 @@ def inverse_bandpass(x):
     return -sigmoid(x - 5) + sigmoid(x - 15) + 1
 
 
+fig = plt.figure(figsize=(13,8))
+ax = fig.add_subplot(111)
+ax.spines['top'].set_color('none')
+ax.spines['bottom'].set_color('none')
+ax.spines['left'].set_color('none')
+ax.spines['right'].set_color('none')
+ax.tick_params(labelcolor='w', top=False, bottom=False, left=False, right=False)
+
+ax.set_xlabel('[AHL]  AU')
+ax.set_ylabel('Activation')
+x = np.arange(0,10, 0.01)
+ax = fig.add_subplot(221)
+ax.plot(x, threshold_on(x))
+ax.set_title('Threshold')
+
+ax = fig.add_subplot(222)
+ax.plot(x, threshold_off(x))
+ax.set_title('Inverse threshold')
+
+x = np.arange(0,20, 0.01)
+ax = fig.add_subplot(223)
+ax.plot(x, bandpass(x))
+ax.set_title('Bandpass')
+
+ax = fig.add_subplot(224)
+ax.plot(x, inverse_bandpass(x))
+ax.set_title('Inverse bandpass')
+plt.savefig('activations.pdf')
+plt.show()
 
 def sin(n):
     x = np.random.rand(n, 1)

@@ -130,13 +130,9 @@ def graph_search(truth_table, target_n_nodes = -1):
             block_start = np.sum(blocks[0:i, 1])
             block_size = blocks[i, 1]
 
-
             for s, state in enumerate(truth_table[block_start:block_start+block_size, :-1]): # for each state in the block
-
-
                 lower = truth_table[block_start+s -1, :-1]
                 higher = truth_table[block_start + s + 1, :-1]
-
 
                 if check_constraints(state, lower): #check if we can put state below
 
@@ -160,7 +156,6 @@ def graph_search(truth_table, target_n_nodes = -1):
                     if hash_table(new_truth_table) not in discovered_tables:
                         discovered_tables.add(hash_table(new_truth_table))
                         truth_tables.put((new_n_ones, len(discovered_tables), new_truth_table))
-
 
     return best_table, discovered_tables
 
@@ -264,8 +259,8 @@ if __name__ == '__main__':
     #outputs = np.array([[1,0,1,0,1,1,1,0]]) #0xAE
     #outputs = np.array([[0,1,0,1,0,1,0,1]]) #dependant on one input
 
-    n_inputs = 4
-    outputs = np.array([[0,0,1,1,0,1,1,1,0,0,1,1,0,1,1,1]]) # threshold
+    #n_inputs = 4
+    #outputs = np.array([[0,0,1,1,0,1,1,1,0,0,1,1,0,1,1,1]]) # threshold
 
 
 
@@ -286,9 +281,6 @@ if __name__ == '__main__':
 
         outputs = list(map(int, list(outputs_string)))
         outputs = np.array([outputs])
-
-
-
 
 
     truth_table = create_truth_table(outputs)

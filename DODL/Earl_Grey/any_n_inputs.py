@@ -8,7 +8,7 @@ from macchiato import macchiato, graph_search, macchiato_v2
 from time import time
 #from exhaustive_search import *
 
-n_inputs = 3
+n_inputs = 4
 graph = False
 all_outputs = list(map(np.array,list(itertools.product([0, 1], repeat = 2**n_inputs))))
 

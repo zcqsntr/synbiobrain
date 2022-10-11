@@ -3,12 +3,14 @@ sys.path.append('/Users/neythen/Desktop/Projects/DODL/Macchiato')
 import itertools
 import numpy as np
 
+
+
 from earl_grey import *
-from macchiato import macchiato, graph_search, macchiato_v2
+from DODL.Macchiato.macchiato import macchiato, graph_search, macchiato_v2
 from time import time
 #from exhaustive_search import *
 
-n_inputs = 4
+n_inputs = 3
 graph = False
 all_outputs = list(map(np.array,list(itertools.product([0, 1], repeat = 2**n_inputs))))
 
@@ -22,10 +24,21 @@ for i,outputs in enumerate(all_outputs):
     print(i)
     #best_table= earl_grey(outputs)
     print(outputs)
-    best_tables= macchiato_v2(np.array(outputs)) #{-1: 0, 0: 1, 1: 151, 2: 104, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0}
-    #activations = get_activations(best_table, n_inputs, allowed_acts=['TH', 'IT', 'BP', 'IB'])
 
-    #best_table = graph_search(outputs) #{-1: 0, 0: 2, 1: 150, 2: 98, 3: 6, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0}
+
+    if graph:
+        #best_table = graph_search(outputs)  # {-1: 0, 0: 2, 1: 150, 2: 98, 3: 6, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0}
+        best_table = macchiato(outputs, higher_order = False)  # {-1: 0, 0: 2, 1: 162, 2: 92, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0}
+        #best_table = macchiato(outputs, higher_order = True) #{-1: 0, 0: 2, 1: 162, 2: 92, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0}
+        #best_table = earl_grey(outputs) #{-1: 0, 0: 2, 1: 162, 2: 92, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0}
+        activations = get_activations(best_table, n_inputs, allowed_acts=['TH', 'IT', 'IB', 'BP'])
+    else:
+        best_tables= macchiato_v2(np.array(outputs), priorities = ['IB', 'IT', 'TH', 'BP']) #{-1: 0, 0: 1, 1: 151, 2: 104, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0}
+        for t in best_tables:
+            print(t[:,-1])
+
+
+
 
     #activations = get_activations(best_table, n_inputs, allowed_acts=['TH', 'IT', 'BP', 'IB'])
 

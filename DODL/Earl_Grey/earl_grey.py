@@ -127,8 +127,6 @@ def rough_optimisation(truth_table):
     for earl grey to do the final bit of opt
     '''
     n_inputs = int(np.log2(truth_table.shape[0]))
-
-
     truth_table = sort_truth_table(truth_table)
 
     # split into groups based on how many inputs are activated
@@ -196,14 +194,10 @@ def rough_optimisation(truth_table):
 
 
 def earl_grey(outputs):
-    n_inputs = int(np.log2(outputs.size))
     truth_table = create_truth_table(outputs)
-    #truth_table,_ = rough_optimisation(truth_table)
+    truth_table,_ = rough_optimisation(truth_table)
 
-    current_table = copy.deepcopy(truth_table)
     current_table = truth_table
-
-    will_exit = True
 
 
     finished = False
@@ -218,8 +212,6 @@ def earl_grey(outputs):
         # each block of ones is a cover, try and maximise each cover in turn, starting from largest cover
         cov_sort = np.argsort(covers[:, 1])  # this will bias towards states in the middle, probably not what we want
 
-
-        test_table = copy.deepcopy(current_table)
 
         for index in cov_sort:
             # get smallest cover
